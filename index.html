@@ -3,10 +3,172 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=rhart-encounter-lab.html">
-  <title>GameOver · Proof of Encounter</title>
+  <meta name="description" content="GameOver records a mutually confirmed exchange between two wallets on Ethereum Sepolia.">
+  <meta name="color-scheme" content="dark">
+  <title>GameOver · Two-agent encounter</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="core.js"></script>
+  <script src="app.js" defer></script>
 </head>
 <body>
-  <p>Opening <a href="rhart-encounter-lab.html">GameOver · Proof of Encounter</a>…</p>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="./" aria-label="GameOver home">
+        <span>GAME</span><strong>OVER</strong>
+      </a>
+      <div class="wallet-actions">
+        <span class="wallet-chip" id="wallet-chip">Wallet disconnected</span>
+        <button class="button button-light" id="connect-button" type="button">Connect MetaMask</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <p class="kicker">Live proof of encounter</p>
+        <h1 id="page-title">Two wallets. One confirmed exchange.</h1>
+        <p class="intro-copy">The occurrence matters, not its price. One wallet proposes what happened; the other confirms the same private statement.</p>
+      </div>
+      <div class="live-mark" aria-label="Sepolia status">
+        <span class="live-dot" id="live-dot"></span>
+        <div><strong id="network-label">Sepolia</strong><small id="network-detail">Waiting for wallet</small></div>
+      </div>
+    </section>
+
+    <section class="configuration-alert" id="configuration-alert" hidden>
+      <strong>Contract deployment required.</strong>
+      <span>Deploy <code>GameOverEncounter.sol</code>, then add its address and deployment block to <code>config.js</code>.</span>
+    </section>
+
+    <section class="metrics" aria-label="Connected account status">
+      <article class="metric">
+        <span class="metric-label">Connected wallet</span>
+        <strong class="metric-value address" id="account-value">Not connected</strong>
+        <small id="account-role">Connect to begin</small>
+      </article>
+      <article class="metric position-neutral" id="position-metric">
+        <span class="metric-label">Today’s position</span>
+        <strong class="metric-value position" id="position-value">0</strong>
+        <small id="position-detail">Resets each UTC day</small>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Next reset</span>
+        <strong class="metric-value countdown" id="countdown-value">--:--:--</strong>
+        <small id="reset-detail">00:00 UTC</small>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Lifetime encounters</span>
+        <strong class="metric-value" id="lifetime-value">0 / 0</strong>
+        <small>provided / received</small>
+      </article>
+    </section>
+
+    <section class="rule-rail" aria-label="GameOver encounter rule">
+      <div class="rule rule-positive"><strong>+1</strong><span>Provide</span></div>
+      <div class="rule rule-confirm"><strong>2</strong><span>Wallet confirmations</span></div>
+      <div class="rule rule-negative"><strong>−1</strong><span>Receive</span></div>
+      <div class="rule rule-reset"><strong>00:00</strong><span>UTC renewal</span></div>
+    </section>
+
+    <section class="workspace">
+      <article class="panel" aria-labelledby="propose-title">
+        <div class="panel-heading">
+          <div>
+            <p class="step-label">Wallet one</p>
+            <h2 id="propose-title">Propose an encounter</h2>
+          </div>
+          <span class="role-badge mint">Provider +1</span>
+        </div>
+
+        <form id="encounter-form">
+          <label for="beneficiary-address">Beneficiary wallet address</label>
+          <input id="beneficiary-address" name="beneficiary" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" required>
+
+          <div class="label-row">
+            <label for="statement">What was exchanged?</label>
+            <span id="statement-count">0 / 280</span>
+          </div>
+          <textarea id="statement" name="statement" maxlength="280" rows="5" placeholder="For example: Rudolf helped Jason repair a chair, and Jason acknowledges receiving the help." required></textarea>
+          <p class="field-help">The text stays off-chain. A salted digest is recorded on Sepolia; the exact statement travels in the private confirmation link.</p>
+
+          <button class="button button-mint button-wide" id="propose-button" type="submit" disabled>Propose with MetaMask</button>
+        </form>
+
+        <section class="result" id="proposal-result" hidden aria-live="polite">
+          <p class="result-kicker">Proposal recorded</p>
+          <h3>Send this link to the beneficiary</h3>
+          <p>Open it in the second browser, connect the beneficiary wallet and confirm before UTC midnight.</p>
+          <div class="copy-row">
+            <input id="share-link" type="text" readonly aria-label="Encounter confirmation link">
+            <button class="button button-light" id="copy-link-button" type="button">Copy link</button>
+          </div>
+          <a class="text-link" id="proposal-transaction-link" href="#" target="_blank" rel="noopener">View proposal on Sepolia Etherscan</a>
+        </section>
+      </article>
+
+      <article class="panel confirmation-panel" aria-labelledby="confirm-title">
+        <div class="panel-heading">
+          <div>
+            <p class="step-label">Wallet two</p>
+            <h2 id="confirm-title">Review and confirm</h2>
+          </div>
+          <span class="role-badge red">Beneficiary −1</span>
+        </div>
+
+        <div class="confirmation-empty" id="confirmation-empty">
+          <span class="empty-number">02</span>
+          <p>The beneficiary opens the shared link here. GameOver checks the link against the proposal stored on Sepolia before enabling confirmation.</p>
+        </div>
+
+        <section class="confirmation-card" id="confirmation-card" hidden>
+          <dl class="encounter-meta">
+            <div><dt>Provider</dt><dd id="review-provider">—</dd></div>
+            <div><dt>Beneficiary</dt><dd id="review-beneficiary">—</dd></div>
+            <div><dt>UTC day</dt><dd id="review-epoch">—</dd></div>
+            <div><dt>On-chain state</dt><dd id="review-status">Checking…</dd></div>
+          </dl>
+          <blockquote id="review-statement"></blockquote>
+          <details class="digest-details">
+            <summary>Statement commitment</summary>
+            <code id="review-digest">—</code>
+          </details>
+          <p class="verification-line" id="verification-line">Connect MetaMask to verify this proposal.</p>
+          <button class="button button-red button-wide" id="confirm-button" type="button" disabled>Confirm as beneficiary</button>
+          <a class="text-link" id="confirmation-transaction-link" href="#" target="_blank" rel="noopener" hidden>View confirmation on Sepolia Etherscan</a>
+        </section>
+      </article>
+    </section>
+
+    <section class="panel ledger-panel" aria-labelledby="history-title">
+      <div class="panel-heading history-heading">
+        <div>
+          <p class="step-label">Ethereum memory</p>
+          <h2 id="history-title">Confirmed encounters</h2>
+        </div>
+        <button class="button button-ghost" id="refresh-button" type="button" disabled>Refresh</button>
+      </div>
+      <div class="ledger" id="encounter-ledger">
+        <p class="ledger-empty">Connect a wallet to read its Sepolia history.</p>
+      </div>
+    </section>
+
+    <details class="about">
+      <summary>What this demo proves and does not prove</summary>
+      <div class="about-grid">
+        <p>A provider’s transaction proposes an exchange. Only the named beneficiary can confirm it during the same UTC day. Confirmation moves the daily positions and permanently records the two addresses, digest and time.</p>
+        <p>Daily positions automatically read as zero after UTC midnight; confirmed receipts and lifetime totals remain. There is no token, payment, treasury, payout, biometric check, personhood proof or AI witness in this build.</p>
+        <p>Two wallet signatures show control of two addresses and agreement with one digest. They do not independently prove that two people met or that the statement is objectively true.</p>
+      </div>
+    </details>
+  </main>
+
+  <footer class="shell footer">
+    <span>GameOver · ETHOnline 2026</span>
+    <span>Experimental Sepolia software · No real ETH is accepted</span>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
