@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GameOver Economy Lab: a simulated Proof-of-Encounter commons, reserve and AI task market for ETHOnline 2026.">
+  <title>GameOver Economy Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --black: #050505;
+      --panel: #0d0d0d;
+      --panel-2: #141414;
+      --white: #ffffff;
+      --muted: #aaa;
+      --line: #303030;
+      --line-soft: #202020;
+      --red: #e30907;
+      --mint: #b3fbed;
+      --mint-ink: #001d18;
+      --radius: 18px;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .34);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--black); color: var(--white); min-height: 100vh; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    a { color: var(--mint); }
+
+    .shell { width: min(1220px, calc(100% - 32px)); margin: 0 auto; }
+    .topbar { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line-soft); background: rgba(5, 5, 5, .9); backdrop-filter: blur(18px); }
+    .topbar-inner { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .brand { display: inline-flex; align-items: center; gap: 13px; color: var(--white); text-decoration: none; }
+    .brand-mark { width: 13px; height: 42px; position: relative; border: 2px solid var(--white); }
+    .brand-mark::after { content: ""; position: absolute; width: 25px; height: 4px; background: var(--red); transform: rotate(-46deg); left: -8px; top: 17px; }
+    .wordmark { font-weight: 900; letter-spacing: -.06em; font-size: 1.45rem; }
+    .wordmark em { color: var(--mint); font-style: normal; }
+    .prototype-badge { border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; color: var(--muted); font-size: .77rem; letter-spacing: .08em; text-transform: uppercase; }
+
+    .hero { padding: 76px 0 34px; display: grid; grid-template-columns: 1.35fr .65fr; gap: 46px; align-items: end; }
+    .eyebrow { margin: 0 0 14px; color: var(--mint); font-size: .78rem; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 850px; font-size: clamp(3rem, 7.4vw, 6.8rem); line-height: .9; letter-spacing: -.075em; }
+    h1 span { color: var(--mint); }
+    .hero-copy { margin: 24px 0 0; max-width: 760px; color: #cacaca; font-size: clamp(1rem, 1.7vw, 1.22rem); line-height: 1.65; }
+    .hero-aside { border-left: 4px solid var(--red); padding: 4px 0 4px 21px; }
+    .hero-aside strong { display: block; margin-bottom: 8px; font-size: .82rem; letter-spacing: .1em; text-transform: uppercase; }
+    .hero-aside p { margin: 0; color: var(--muted); line-height: 1.6; }
+
+    .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 22px 0 34px; }
+    .metric { min-height: 118px; border: 1px solid var(--line); background: linear-gradient(150deg, #101010, #080808); border-radius: 14px; padding: 18px; }
+    .metric-label { display: block; min-height: 30px; color: var(--muted); font-size: .76rem; line-height: 1.35; text-transform: uppercase; letter-spacing: .09em; }
+    .metric-value { display: block; margin-top: 11px; font-size: clamp(1.25rem, 2.2vw, 2rem); font-weight: 780; letter-spacing: -.04em; }
+    .metric-detail { display: block; margin-top: 5px; color: #777; font-size: .75rem; }
+    .good { color: var(--mint) !important; }
+    .bad { color: var(--red) !important; }
+
+    .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 11px; scrollbar-width: thin; }
+    .tab { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); padding: 11px 15px; transition: .18s ease; }
+    .tab:hover { color: var(--white); border-color: #565656; }
+    .tab[aria-selected="true"] { color: var(--mint-ink); background: var(--mint); border-color: var(--mint); font-weight: 750; }
+
+    .workspace { padding: 8px 0 90px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: enter .22s ease; }
+    @keyframes enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+    .section-lead { display: flex; justify-content: space-between; gap: 24px; align-items: end; padding: 32px 0 18px; }
+    .section-lead h2 { margin: 0; font-size: clamp(1.65rem, 4vw, 2.8rem); letter-spacing: -.045em; }
+    .section-lead p { margin: 9px 0 0; max-width: 720px; color: var(--muted); line-height: 1.55; }
+    .section-kicker { color: var(--mint); font-size: .74rem; letter-spacing: .13em; text-transform: uppercase; }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: clamp(19px, 3vw, 28px); box-shadow: var(--shadow); }
+    .panel h3 { margin: 0; font-size: 1.2rem; letter-spacing: -.025em; }
+    .panel-intro { color: var(--muted); line-height: 1.55; margin: 8px 0 22px; }
+    .panel.mint-edge { border-top: 4px solid var(--mint); }
+    .panel.red-edge { border-top: 4px solid var(--red); }
+
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .field { display: grid; gap: 7px; }
+    .field.full { grid-column: 1 / -1; }
+    label { color: #d7d7d7; font-size: .79rem; font-weight: 700; letter-spacing: .045em; }
+    input, select, textarea { width: 100%; color: var(--white); background: #090909; border: 1px solid #383838; border-radius: 10px; padding: 12px 13px; outline: none; transition: border-color .16s, box-shadow .16s; }
+    textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
+    input:focus, select:focus, textarea:focus { border-color: var(--mint); box-shadow: 0 0 0 3px rgba(179, 251, 237, .09); }
+    input:disabled, select:disabled { color: #8e8e8e; background: #121212; }
+    .help { color: #777; font-size: .76rem; line-height: 1.5; }
+
+    .button-row { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+    .button { border: 1px solid var(--white); background: var(--white); color: #050505; border-radius: 10px; padding: 11px 15px; font-weight: 780; transition: transform .15s, opacity .15s, background .15s; }
+    .button:hover { transform: translateY(-1px); }
+    .button:disabled { opacity: .32; cursor: not-allowed; transform: none; }
+    .button.mint { background: var(--mint); border-color: var(--mint); color: var(--mint-ink); }
+    .button.red { background: var(--red); border-color: var(--red); color: var(--white); }
+    .button.ghost { background: transparent; color: var(--white); border-color: #484848; }
+    .button.small { padding: 8px 10px; border-radius: 8px; font-size: .78rem; }
+
+    .preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .preset { border: 1px solid #353535; background: #111; color: #ddd; border-radius: 999px; padding: 8px 11px; font-size: .78rem; }
+    .preset:hover { border-color: var(--mint); color: var(--mint); }
+
+    .proof { min-height: 100%; display: grid; align-content: start; gap: 16px; }
+    .proof-empty { color: #777; line-height: 1.65; border: 1px dashed #383838; border-radius: 12px; padding: 28px; }
+    .proof-card { display: none; }
+    .proof-card.visible { display: block; }
+    .proof-statement { margin: 0 0 18px; font-size: 1.08rem; line-height: 1.65; }
+    .hash-grid { display: grid; grid-template-columns: 118px 1fr; gap: 9px 13px; font-size: .79rem; }
+    .hash-grid span:nth-child(odd) { color: var(--muted); }
+    code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; color: var(--mint); }
+    .code-wrap { display: flex; gap: 17px; align-items: center; margin: 18px 0; }
+    .encounter-code { flex: 0 0 112px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; aspect-ratio: 1; border: 1px solid #393939; background: #070707; padding: 9px; border-radius: 9px; }
+    .encounter-code i { display: block; background: #1b1b1b; border-radius: 1px; }
+    .encounter-code i.on { background: var(--mint); }
+    .code-copy { color: var(--muted); font-size: .8rem; line-height: 1.55; }
+    .status-line { min-height: 24px; margin-top: 14px; color: var(--muted); font-size: .84rem; }
+
+    .actor-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .actor-card { border: 1px solid var(--line); border-radius: 14px; padding: 17px; background: #0b0b0b; }
+    .actor-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .actor-head strong { font-size: 1rem; }
+    .balance { font-size: 2.2rem; font-weight: 850; letter-spacing: -.06em; margin: 15px 0 2px; }
+    .actor-status { min-height: 34px; color: var(--muted); font-size: .76rem; line-height: 1.4; }
+    .actor-details { border-top: 1px solid var(--line-soft); margin-top: 14px; padding-top: 13px; color: #898989; font-size: .73rem; line-height: 1.7; }
+    .claim-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-top: 12px; }
+    .claim-row span { color: var(--mint); font-size: .8rem; }
+    .agent-strip { margin-top: 10px; display: flex; justify-content: space-between; gap: 18px; padding: 15px 18px; border: 1px dashed #383838; border-radius: 12px; color: var(--muted); }
+    .agent-strip strong { color: var(--white); }
+
+    .rule-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 18px 0; }
+    .rule { border: 1px solid var(--line); border-radius: 12px; padding: 15px; }
+    .rule strong { display: block; font-size: 1.55rem; margin-bottom: 6px; }
+    .rule span { color: var(--muted); font-size: .77rem; line-height: 1.45; }
+
+    .bar { height: 14px; display: flex; overflow: hidden; background: #1a1a1a; border-radius: 999px; margin: 18px 0 9px; }
+    .bar-protected { background: #fff; }
+    .bar-buffer { background: var(--mint); }
+    .bar-risk { background: var(--red); }
+    .bar-legend { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: .72rem; }
+
+    .value-list { display: grid; gap: 0; margin: 16px 0 0; }
+    .value-row { display: flex; justify-content: space-between; gap: 18px; border-top: 1px solid var(--line-soft); padding: 12px 0; color: var(--muted); font-size: .84rem; }
+    .value-row strong { color: var(--white); text-align: right; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    th, td { padding: 12px 10px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+    th { color: #8d8d8d; font-size: .69rem; letter-spacing: .08em; text-transform: uppercase; }
+    td { color: #d7d7d7; }
+    .table-wrap { overflow-x: auto; }
+
+    .ledger { display: grid; gap: 9px; }
+    .ledger-entry { display: grid; grid-template-columns: 105px 1fr auto; gap: 14px; align-items: start; border-top: 1px solid var(--line-soft); padding: 14px 0 5px; }
+    .ledger-entry:first-child { border-top: 0; }
+    .ledger-kind { color: var(--mint); font-size: .7rem; letter-spacing: .09em; text-transform: uppercase; }
+    .ledger-entry p { margin: 0; color: #d2d2d2; line-height: 1.5; }
+    .ledger-entry small { color: #707070; }
+    .empty { padding: 23px 0; color: #707070; line-height: 1.6; }
+
+    .formula { border-left: 4px solid var(--mint); padding: 2px 0 2px 18px; margin: 18px 0; }
+    .formula code { display: block; color: var(--white); font-size: clamp(.78rem, 1.5vw, .95rem); line-height: 1.7; }
+    .warning { border-left: 4px solid var(--red); padding-left: 18px; color: #c9c9c9; line-height: 1.65; }
+    .plain-list { margin: 14px 0 0; padding-left: 19px; color: #bdbdbd; line-height: 1.7; }
+    .split-grid { display: grid; grid-template-columns: 3fr 1.25fr .5fr .25fr; gap: 5px; margin: 17px 0 10px; }
+    .split-grid span { min-height: 64px; display: flex; align-items: end; padding: 9px; color: #050505; font-size: .7rem; font-weight: 800; border-radius: 6px; }
+    .split-ai { background: var(--mint); }
+    .split-human { background: #fff; }
+    .split-commons { background: #a0a0a0; }
+    .split-protocol { background: var(--red); color: #fff !important; }
+
+    .disclosure { margin-top: 28px; border: 1px solid #4b1717; background: #130606; border-radius: 14px; padding: 20px; color: #d7bcbc; line-height: 1.62; }
+    .disclosure strong { color: var(--white); }
+    .toast { position: fixed; right: 22px; bottom: 22px; z-index: 50; max-width: 390px; background: var(--mint); color: var(--mint-ink); border-radius: 10px; padding: 13px 16px; font-weight: 760; transform: translateY(130%); opacity: 0; transition: .2s ease; box-shadow: 0 18px 50px rgba(0,0,0,.45); }
+    .toast.show { transform: none; opacity: 1; }
+    .toast.error { background: var(--red); color: #fff; }
+    .hidden { display: none !important; }
+
+    footer { border-top: 1px solid var(--line-soft); padding: 30px 0 50px; color: #777; font-size: .78rem; line-height: 1.6; }
+    footer .shell { display: flex; justify-content: space-between; gap: 20px; }
+
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; gap: 28px; }
+      .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .actor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 22px, 1220px); }
+      .topbar-inner { min-height: 64px; }
+      .prototype-badge { display: none; }
+      .hero { padding-top: 48px; }
+      .metric-grid, .grid-2 { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .section-lead { align-items: start; flex-direction: column; }
+      .form-grid { grid-template-columns: 1fr; }
+      .field.full { grid-column: auto; }
+      .actor-grid { grid-template-columns: 1fr; }
+      .rule-grid { grid-template-columns: 1fr; }
+      .ledger-entry { grid-template-columns: 1fr; gap: 5px; }
+      .split-grid { grid-template-columns: 1fr 1fr; }
+      footer .shell { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="#top" aria-label="GameOver Economy Lab home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="wordmark">GAME<em>OVER</em></span>
+      </a>
+      <span class="prototype-badge">Economy Lab · simulated MVP</span>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">ETHOnline 2026 · second MVP</p>
+          <h1>An economy that rewards <span>participation.</span></h1>
+          <p class="hero-copy">GameOver joins Proof of Encounter to a protected ETH commons. Daily positions disappear at midnight UTC; contribution history, reputation and claimable surplus remain.</p>
+        </div>
+        <aside class="hero-aside">
+          <strong>The constraint</strong>
+          <p>Infinite time can renew participation. It cannot make one ETH both permanently untouched and spendable. This lab exposes that trade-off instead of hiding it.</p>
+        </aside>
+      </section>
+
+      <section class="metric-grid" aria-label="Current simulation metrics">
+        <article class="metric"><span class="metric-label">Commons reserve</span><strong class="metric-value" id="metric-eth">1.0000 ETH</strong><small class="metric-detail" id="metric-reserve-usd">3,600.00 USDC value</small></article>
+        <article class="metric"><span class="metric-label">Protected donation floor</span><strong class="metric-value" id="metric-floor">3,200.00</strong><small class="metric-detail">original deposit value</small></article>
+        <article class="metric"><span class="metric-label">Preview payout pool</span><strong class="metric-value good" id="metric-pool">94.23</strong><small class="metric-detail">revenue + guarded appreciation</small></article>
+        <article class="metric"><span class="metric-label">Perpetual Commons Debt</span><strong class="metric-value" id="metric-debt">3,200.00</strong><small class="metric-detail">book value never decreases</small></article>
+        <article class="metric"><span class="metric-label">Midnight UTC</span><strong class="metric-value" id="metric-epoch">Epoch 1</strong><small class="metric-detail" id="metric-epoch-date">UTC boundary</small></article>
+      </section>
+
+      <nav class="tabs" role="tablist" aria-label="Economy Lab sections">
+        <button class="tab" role="tab" aria-selected="true" aria-controls="encounter-panel" data-tab="encounter">1 · Encounter</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="commons-panel" data-tab="commons">2 · Commons</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="midnight-panel" data-tab="midnight">3 · Midnight</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="agent-panel" data-tab="agent">4 · Agent market</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="model-panel" data-tab="model">5 · Model</button>
+      </nav>
+
+      <div class="workspace">
+        <section class="tab-panel active" id="encounter-panel" role="tabpanel" data-panel="encounter">
+          <div class="section-lead">
+            <div><span class="section-kicker">Proof of Encounter</span><h2>Confirm an exchange</h2><p>The occurrence matters, not its price. Both actors confirm; any encounter involving the AI agent also needs an independent human witness.</p></div>
+            <button class="button ghost small" id="reset-simulation" type="button">Reset simulation</button>
+          </div>
+
+          <div class="grid-2">
+            <article class="panel">
+              <h3>Compose the encounter</h3>
+              <p class="panel-intro">Try either AI example or build a human exchange from scratch.</p>
+              <div class="preset-row">
+                <button class="preset" id="preset-inspection" type="button">AI buys a stock inspection</button>
+                <button class="preset" id="preset-analysis" type="button">Human buys AI stock analysis</button>
+                <button class="preset" id="preset-human" type="button">Human exchange</button>
+              </div>
+              <div class="form-grid">
+                <div class="field full"><label for="encounter-mode">Encounter type</label><select id="encounter-mode"><option value="human">Human to human</option><option value="agent-hires">AI agent commissions a human</option><option value="human-hires">Human commissions the AI agent</option></select></div>
+                <div class="field"><label for="contributor">Contributor of value</label><select id="contributor"></select></div>
+                <div class="field"><label for="recipient">Recipient of value</label><select id="recipient"></select></div>
+                <div class="field" id="witness-field"><label for="witness">Independent human witness</label><select id="witness"></select><span class="help">Required when an AI actor participates.</span></div>
+                <div class="field"><label for="category">Kind of value</label><select id="category"><option>Goods</option><option>Service</option><option>Knowledge</option><option>Goodwill</option><option>AI-assisted task</option></select></div>
+                <div class="field full"><label for="description">Shared statement</label><textarea id="description">Pam gives Elijah a bag of fruit; Elijah acknowledges receiving it.</textarea></div>
+                <div class="field full"><label for="location">Private location note</label><input id="location" value="Cape Town" autocomplete="off"><span class="help">Only a commitment is demonstrated; raw location stays off-chain.</span></div>
+              </div>
+              <div class="button-row"><button class="button mint" id="prepare-encounter" type="button">Prepare proof</button><button class="button ghost" id="clear-encounter" type="button">Clear</button></div>
+              <div class="status-line" id="encounter-status" aria-live="polite"></div>
+            </article>
+
+            <article class="panel proof">
+              <div><h3>Mutual proof</h3><p class="panel-intro">A digest stands in for AI structuring, while a rotating visual code represents the in-person handshake.</p></div>
+              <div class="proof-empty" id="proof-empty">Prepare an encounter to generate its statement, evidence digest, location commitment and confirmation path.</div>
+              <div class="proof-card" id="proof-card">
+                <p class="proof-statement" id="proof-statement"></p>
+                <div class="hash-grid"><span>Evidence digest</span><code id="proof-hash"></code><span>Location</span><code id="location-hash"></code><span>Pair history</span><strong id="pair-history"></strong><span>Marginal recognition</span><strong id="marginal-score"></strong></div>
+                <div class="code-wrap"><div class="encounter-code" id="encounter-code" aria-label="Visual rotating encounter code"></div><p class="code-copy">In a live version this becomes a short-lived QR handshake. The prototype stores no biometric data and never places raw text or GPS on-chain.</p></div>
+                <div class="button-row"><button class="button ghost" id="sign-contributor" type="button"></button><button class="button ghost" id="sign-recipient" type="button"></button><button class="button ghost" id="sign-witness" type="button"></button><button class="button mint" id="anchor-encounter" type="button" disabled>Anchor receipt</button></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="section-lead"><div><span class="section-kicker">Today</span><h2>Positions and claims</h2><p>Mint means eligible at midnight. Red means no payout and no punishment. Only the current daily position resets.</p></div></div>
+          <div class="actor-grid" id="actor-grid"></div>
+          <div class="agent-strip" id="agent-strip"></div>
+
+          <article class="panel" style="margin-top:14px">
+            <h3>Persistent event log</h3><p class="panel-intro">Receipts survive midnight. Descriptions shown here are local demo data; a live chain would store only commitments and events.</p>
+            <div class="ledger" id="encounter-ledger"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" id="commons-panel" role="tabpanel" data-panel="commons">
+          <div class="section-lead"><div><span class="section-kicker">Protected reserve</span><h2>The Commons</h2><p>One simulated ETH starts the experiment. The contract design records each donation's USDC value and blocks deliberate harvests that would push the reserve below their combined original value.</p></div></div>
+          <div class="grid-2">
+            <article class="panel mint-edge">
+              <h3>Reserve condition</h3><p class="panel-intro" id="reserve-condition">The reserve is above its protected floor.</p>
+              <div class="bar" aria-label="Protected floor and reserve buffer"><span class="bar-protected" id="bar-protected"></span><span class="bar-buffer" id="bar-buffer"></span><span class="bar-risk" id="bar-risk"></span></div>
+              <div class="bar-legend"><span>White · original deposit value</span><span>Mint · current buffer</span><span>Red · shortfall</span></div>
+              <div class="value-list">
+                <div class="value-row"><span>Current ETH price</span><strong id="reserve-price"></strong></div>
+                <div class="value-row"><span>Current reserve value</span><strong id="reserve-value"></strong></div>
+                <div class="value-row"><span>High-water mark</span><strong id="reserve-hwm"></strong></div>
+                <div class="value-row"><span>New gain above high-water mark</span><strong id="reserve-gain"></strong></div>
+                <div class="value-row"><span>Guarded appreciation available</span><strong class="good" id="reserve-harvest"></strong></div>
+                <div class="value-row"><span>Unallocated staking and agent revenue</span><strong id="reserve-revenue"></strong></div>
+                <div class="value-row"><span>Liquid mock USDC for claims</span><strong id="reserve-liquidity"></strong></div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <h3>Change the price</h3><p class="panel-intro">The mock oracle lets you test appreciation and depreciation without connecting a wallet.</p>
+              <div class="field"><label for="eth-price">ETH price in mock USDC</label><input id="eth-price" type="number" min="1" step="25"></div>
+              <div class="field" style="margin-top:12px"><label for="harvest-mode">Appreciation rule</label><select id="harvest-mode"><option value="log">Log-dampened 25% ceiling</option><option value="fixed">Fixed 25% of new high</option></select><span class="help">The logarithmic rule leaves progressively more upside in the reserve as gains grow.</span></div>
+              <div class="button-row"><button class="button mint" id="apply-price" type="button">Apply mock price</button></div>
+              <div class="formula"><code>harvest = 25% × floor × ln(1 + new gain ÷ floor)</code></div>
+            </article>
+
+            <article class="panel">
+              <h3>Add a donation</h3><p class="panel-intro">A donation has no withdrawal right. It increases donor recognition, the protected floor and Perpetual Commons Debt.</p>
+              <div class="form-grid"><div class="field"><label for="donor">Donor</label><select id="donor"></select></div><div class="field"><label for="donation-eth">ETH amount</label><input id="donation-eth" type="number" min="0.0001" step="0.01" value="0.01"></div></div>
+              <div class="button-row"><button class="button" id="add-donation" type="button">Add simulated donation</button></div>
+            </article>
+
+            <article class="panel">
+              <h3>Add external revenue</h3><p class="panel-intro">Staking or agent revenue is distributable without selling protected ETH. It remains available until eligible contributors exist.</p>
+              <div class="form-grid"><div class="field"><label for="revenue-source">Source</label><select id="revenue-source"><option>Staking revenue</option><option>Agent revenue</option><option>Protocol revenue</option></select></div><div class="field"><label for="revenue-usd">Mock USDC</label><input id="revenue-usd" type="number" min="0.01" step="1" value="50"></div></div>
+              <div class="button-row"><button class="button" id="add-revenue" type="button">Fund next distribution</button></div>
+            </article>
+          </div>
+          <p class="warning"><strong>Hard limit:</strong> an ETH-only reserve cannot guarantee its original USDC value if ETH itself falls below the deposit price. The guardrail can stop sales; it cannot stop market loss. A real guarantee needs stable collateral, insurance or another external source of value.</p>
+        </section>
+
+        <section class="tab-panel" id="midnight-panel" role="tabpanel" data-panel="midnight">
+          <div class="section-lead"><div><span class="section-kicker">Permissionless rollover</span><h2>Midnight UTC</h2><p>UTC has the same zero-hour offset as GMT for this purpose, although UTC is the time standard used by the protocol.</p></div><button class="button mint" id="finalize-epoch" type="button">Finalize epoch</button></div>
+          <div class="rule-grid"><div class="rule"><strong class="good">+</strong><span>Positive balance receives a proportional claim based on square-root weight and counterparty diversity.</span></div><div class="rule"><strong>0</strong><span>Neutral balance receives no payout. There is no penalty.</span></div><div class="rule"><strong class="bad">−1</strong><span>Negative balance is a free-rider position for this epoch: no payout, no punishment.</span></div></div>
+          <div class="grid-2">
+            <article class="panel"><h3>Distribution preview</h3><p class="panel-intro">Claims accumulate and each person cashes out independently. In a live version that claimant pays their own gas.</p><div class="table-wrap"><table><thead><tr><th>Person</th><th>Net</th><th>Unique / total</th><th>Weight</th><th>Preview</th></tr></thead><tbody id="distribution-body"></tbody></table></div><div class="value-list"><div class="value-row"><span>Total payout pool</span><strong class="good" id="distribution-total"></strong></div><div class="value-row"><span>Negative units absorbed into future</span><strong id="distribution-debt-units"></strong></div></div></article>
+            <article class="panel"><h3>Why the score resets</h3><p class="panel-intro">Daily +1/−1 positions are temporary coordination signals, not a hoardable token.</p><ul class="plain-list"><li>Ending net surplus determines eligibility.</li><li>Square-root weighting gives diminishing rewards for many plusses.</li><li>Counterparty diversity makes repeated pair activity worth less than wider cooperation.</li><li>Claims and reputation persist after balances return to zero.</li><li>Perpetual Commons Debt never falls when somebody claims.</li></ul></article>
+          </div>
+          <article class="panel" style="margin-top:14px"><h3>Epoch history</h3><p class="panel-intro">Manual rollover mirrors a future permissionless <code>finalizeEpoch()</code> transaction.</p><div class="ledger" id="epoch-history"></div></article>
+        </section>
+
+        <section class="tab-panel" id="agent-panel" role="tabpanel" data-panel="agent">
+          <div class="section-lead"><div><span class="section-kicker">Self-funding work</span><h2>Agent task market</h2><p>The requester funds the job. A bid is viable only when the AI's hard-coded 60% bounty covers its declared compute and operating floor; the Commons never pays that bill.</p></div></div>
+          <div class="grid-2">
+            <article class="panel">
+              <h3>Test a bid</h3><p class="panel-intro">This is a transparent pricing experiment, not an autonomous live agent.</p>
+              <div class="form-grid">
+                <div class="field full"><label for="job-type">Task</label><select id="job-type"><option value="inspection">AI commissions a human to inspect and photograph a petshop's stock</option><option value="analysis">Human commissions AI to analyse stock and recommend an order</option></select></div>
+                <div class="field"><label for="job-human">Human worker or verifier</label><select id="job-human"></select></div>
+                <div class="field"><label for="job-budget">Requester budget in mock USDC</label><input id="job-budget" type="number" min="1" step="1" value="100"></div>
+                <div class="field"><label for="compute-floor">AI compute and operating floor</label><input id="compute-floor" type="number" min="0.01" step="1" value="30"></div>
+                <div class="field"><label for="gross-bid">Agent's gross bid</label><input id="gross-bid" type="number" min="0.01" step="1" value="60"></div>
+              </div>
+              <div class="button-row"><button class="button mint" id="check-bid" type="button">Check bid</button><button class="button" id="settle-job" type="button" disabled>Settle simulated job</button></div>
+              <div class="status-line" id="bid-status" aria-live="polite"></div>
+            </article>
+            <article class="panel mint-edge">
+              <h3>Hard-coded settlement</h3><p class="panel-intro">The minimum viable gross quote is <code>compute floor ÷ 60%</code>. Competing agents can bid above that floor; an underfunded bid is rejected.</p>
+              <div class="split-grid" aria-label="Revenue split"><span class="split-ai">60% AI bounty</span><span class="split-human">25% human bounty</span><span class="split-commons">10% ETH</span><span class="split-protocol">5%</span></div>
+              <div class="value-list"><div class="value-row"><span>Minimum viable quote</span><strong id="minimum-bid"></strong></div><div class="value-row"><span>AI bounty at entered bid</span><strong id="ai-bid-share"></strong></div><div class="value-row"><span>Accumulated AI earnings</span><strong id="agent-earnings"></strong></div><div class="value-row"><span>Protocol reserve</span><strong id="protocol-reserve"></strong></div></div>
+            </article>
+          </div>
+          <article class="panel" style="margin-top:14px"><h3>Settled jobs</h3><p class="panel-intro">Ten percent of each funded job converts to a simulated ETH donation at the current oracle price. No real ETH is taken from the Debt pool.</p><div class="ledger" id="job-ledger"></div></article>
+        </section>
+
+        <section class="tab-panel" id="model-panel" role="tabpanel" data-panel="model">
+          <div class="section-lead"><div><span class="section-kicker">Rules made visible</span><h2>Economic model</h2><p>This second MVP separates the renewable encounter game, the protected reserve and externally funded claims.</p></div><button class="button ghost" id="export-state" type="button">Export simulation JSON</button></div>
+          <div class="grid-3">
+            <article class="panel"><h3>Encounter layer</h3><ul class="plain-list"><li>Actors start each UTC epoch at zero.</li><li>Contributor +1; recipient −1.</li><li>A recipient at −1 must contribute before receiving again.</li><li>AI encounters require an independent human witness.</li><li>Raw evidence stays off-chain; hashes remain.</li></ul></article>
+            <article class="panel"><h3>Distribution layer</h3><ul class="plain-list"><li>Only positive humans are eligible.</li><li>Net, not gross, activity is counted.</li><li>Weight = √net × √(unique counterparties ÷ encounters).</li><li>Revenue always distributes when eligible users exist.</li><li>Appreciation distributes only above the high-water mark.</li></ul></article>
+            <article class="panel"><h3>Commons layer</h3><ul class="plain-list"><li>Initial reserve is a simulated 1 ETH.</li><li>Future live experiment begins with 0.01 ETH.</li><li>Donors gain recognition, never a withdrawal claim.</li><li>The protected USDC book floor and debt never decrease.</li><li>Each claimant initiates their own cash-out.</li></ul></article>
+          </div>
+          <div class="grid-2" style="margin-top:14px">
+            <article class="panel"><h3>High-water algorithm</h3><p class="panel-intro">Only value above the preceding gross peak counts as new appreciation. The selected log-dampened version starts near a 25% share for small gains and declines as a percentage when gains become large.</p><div class="formula"><code>newGain = max(0, reserveValue − highWater)</code><code>logHarvest = min(buffer, 0.25 × floor × ln(1 + newGain / floor))</code><code>postHarvestReserve ≥ protectedFloor</code></div></article>
+            <article class="panel"><h3>What the algorithm cannot do</h3><p class="panel-intro">Selling appreciated ETH necessarily reduces the number of ETH in the pool. The model can preserve a USDC floor or preserve the full ETH quantity; it cannot fund payouts from price appreciation while guaranteeing both. Staking and agent revenue avoid that specific conflict because they are external inflows.</p></article>
+          </div>
+          <div class="disclosure"><strong>Prototype disclosure.</strong> The reserve, oracle, AI, midnight execution, swaps and payouts in this browser lab are simulated. The Solidity contracts are unaudited reference code for inspection and test deployment. No return, custody, solvency or reimbursement is promised. Use or loss, including a hacked or drained Commons reserve, is at the user's risk.</div>
+          <p style="margin-top:22px;color:#777">The original Proof-of-Encounter demonstration remains available in <a href="rhart-encounter-lab.html">rhart-encounter-lab.html</a>.</p>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer><div class="shell"><span>Built by Rudolf Hellmut Hartwig for ETHOnline 2026.</span><span>Dependency-free HTML · wallet-free simulation · Solidity references included</span></div></footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const HUMANS = ["Elijah", "Pam", "Rudolf", "Jason"];
+      const AGENT = "GameOver Agent";
+      const STORAGE_KEY = "gameover-economy-mvp-v2";
+      const $ = (id) => document.getElementById(id);
+      const money = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const eth = new Intl.NumberFormat("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+
+      function utcEpochNow() { return Math.floor(Date.now() / 86400000); }
+      function actor(kind = "human") { return { kind, balance: 0, contributions: 0, receipts: 0, counterparts: [], claimable: 0, claimed: 0, reputation: 0, donatedUsd: 0 }; }
+      function freshState() {
+        const actors = Object.fromEntries(HUMANS.map((name) => [name, actor()]));
+        actors[AGENT] = actor("agent");
+        actors.Rudolf.donatedUsd = 3200;
+        actors.Rudolf.reputation = 1;
+        return {
+          version: 2,
+          epoch: utcEpochNow(),
+          block: 19000000,
+          reserveEth: 1,
+          priceUsd: 3600,
+          protectedFloorUsd: 3200,
+          highWaterUsd: 3200,
+          perpetualDebtUsd: 3200,
+          absorbedDebtUnits: 0,
+          pendingRevenueUsd: 0,
+          payoutLiquidityUsd: 0,
+          protocolReserveUsd: 0,
+          agentEarningsUsd: 0,
+          harvestMode: "log",
+          actors,
+          pairCounts: {},
+          prepared: null,
+          encounters: [],
+          epochHistory: [],
+          jobs: [],
+          donations: [{ donor: "Rudolf", eth: 1, price: 3200, value: 3200, epoch: utcEpochNow() }]
+        };
+      }
+
+      function loadState() {
+        try {
+          const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+          if (stored && stored.version === 2 && stored.actors && HUMANS.every((name) => stored.actors[name]) && stored.actors[AGENT]) return stored;
+        } catch (_) { /* start clean */ }
+        return freshState();
+      }
+
+      let state = loadState();
+      let toastTimer;
+
+      function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+      function fmt(value) { return money.format(Math.max(0, Number(value) || 0)); }
+      function fmtSigned(value) { return `${value > 0 ? "+" : ""}${Number(value) || 0}`; }
+      function formatEpoch(epochNumber) { return `${new Date(epochNumber * 86400000).toISOString().slice(0, 10)} 00:00 UTC`; }
+      function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+      function escapeHtml(text) { return String(text).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", "\"": "&quot;" }[char])); }
+      function pairKey(a, b) { return [a, b].sort().join("|"); }
+      function addCounterpart(name, counterpart) {
+        const list = state.actors[name].counterparts;
+        if (!list.includes(counterpart)) list.push(counterpart);
+      }
+      function toast(message, isError = false) {
+        const node = $("toast");
+        node.textContent = message;
+        node.classList.toggle("error", isError);
+        node.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => node.classList.remove("show"), 3400);
+      }
+      function showTab(name) {
+        document.querySelectorAll(".tab").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === name)));
+        document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === name));
+        window.scrollTo({ top: document.querySelector(".tabs").offsetTop - 76, behavior: "smooth" });
+      }
+
+      function hashFallback(text) {
+        let h = 2166136261;
+        for (let i = 0; i < text.length; i += 1) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+        const chunk = (h >>> 0).toString(16).padStart(8, "0");
+        return `0x${chunk.repeat(8)}`;
+      }
+      async function hashText(text) {
+        if (!window.crypto || !window.crypto.subtle) return hashFallback(text);
+        const bytes = new TextEncoder().encode(text);
+        const digest = await window.crypto.subtle.digest("SHA-256", bytes);
+        return `0x${Array.from(new Uint8Array(digest)).map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+      }
+      function shortHash(value) { return value ? `${value.slice(0, 10)}…${value.slice(-8)}` : "—"; }
+
+      function reserveValue() { return state.reserveEth * state.priceUsd; }
+      function previewHarvest() {
+        const current = reserveValue();
+        const gain = Math.max(0, current - state.highWaterUsd);
+        const buffer = Math.max(0, current - state.protectedFloorUsd);
+        if (gain <= 0 || buffer <= 0) return { gain, buffer, amount: 0, rate: 0 };
+        let amount;
+        if (state.harvestMode === "fixed" || state.protectedFloorUsd <= 0) amount = gain * 0.25;
+        else amount = state.protectedFloorUsd * Math.log1p(gain / state.protectedFloorUsd) * 0.25;
+        amount = Math.min(gain, buffer, amount);
+        return { gain, buffer, amount, rate: gain ? amount / gain : 0 };
+      }
+      function actorWeight(name) {
+        const item = state.actors[name];
+        if (item.kind !== "human" || item.balance <= 0) return 0;
+        const total = item.contributions + item.receipts;
+        const diversity = total ? Math.sqrt(item.counterparts.length / total) : 0;
+        return Math.sqrt(item.balance) * diversity;
+      }
+      function eligibleRows() {
+        const harvest = previewHarvest();
+        const pool = state.pendingRevenueUsd + harvest.amount;
+        const rows = HUMANS.map((name) => ({ name, actor: state.actors[name], weight: actorWeight(name) }));
+        const totalWeight = rows.reduce((sum, row) => sum + row.weight, 0);
+        return { rows: rows.map((row) => ({ ...row, share: totalWeight ? pool * row.weight / totalWeight : 0 })), totalWeight, pool, harvest };
+      }
+
+      function setSelectOptions(select, values, preferred) {
+        const wanted = values.includes(preferred) ? preferred : values[0];
+        select.innerHTML = values.map((value) => `<option>${escapeHtml(value)}</option>`).join("");
+        select.value = wanted;
+      }
+      function syncEncounterFields(preferred = {}) {
+        const mode = $("encounter-mode").value;
+        if (mode === "agent-hires") {
+          setSelectOptions($("contributor"), HUMANS, preferred.contributor || "Elijah");
+          setSelectOptions($("recipient"), [AGENT], AGENT);
+          setSelectOptions($("witness"), HUMANS.filter((name) => name !== $("contributor").value), preferred.witness || "Pam");
+          $("witness-field").classList.remove("hidden");
+        } else if (mode === "human-hires") {
+          setSelectOptions($("contributor"), [AGENT], AGENT);
+          setSelectOptions($("recipient"), HUMANS, preferred.recipient || "Rudolf");
+          setSelectOptions($("witness"), HUMANS.filter((name) => name !== $("recipient").value), preferred.witness || "Jason");
+          $("witness-field").classList.remove("hidden");
+        } else {
+          setSelectOptions($("contributor"), HUMANS, preferred.contributor || $("contributor").value || "Pam");
+          setSelectOptions($("recipient"), HUMANS, preferred.recipient || $("recipient").value || "Elijah");
+          $("witness-field").classList.add("hidden");
+        }
+      }
+
+      function updateWitnessOptions() {
+        const mode = $("encounter-mode").value;
+        if (mode === "agent-hires") setSelectOptions($("witness"), HUMANS.filter((name) => name !== $("contributor").value), $("witness").value);
+        if (mode === "human-hires") setSelectOptions($("witness"), HUMANS.filter((name) => name !== $("recipient").value), $("witness").value);
+      }
+
+      function loadPreset(kind) {
+        state.prepared = null;
+        if (kind === "inspection") {
+          $("encounter-mode").value = "agent-hires";
+          syncEncounterFields({ contributor: "Elijah", witness: "Pam" });
+          $("category").value = "AI-assisted task";
+          $("description").value = "The GameOver Agent commissions Elijah to inspect and photograph a petshop's stock; Pam independently confirms the completed inspection.";
+          $("location").value = "Petshop, Cape Town";
+        } else if (kind === "analysis") {
+          $("encounter-mode").value = "human-hires";
+          syncEncounterFields({ recipient: "Rudolf", witness: "Jason" });
+          $("category").value = "AI-assisted task";
+          $("description").value = "Rudolf commissions the GameOver Agent to analyse a petshop's stock and recommend an order; Jason independently verifies delivery of the output.";
+          $("location").value = "Cape Town";
+        } else {
+          $("encounter-mode").value = "human";
+          syncEncounterFields({ contributor: "Pam", recipient: "Elijah" });
+          $("category").value = "Goods";
+          $("description").value = "Pam gives Elijah a bag of fruit; Elijah acknowledges receiving it.";
+          $("location").value = "Cape Town";
+        }
+        renderProof();
+      }
+
+      async function prepareEncounter() {
+        const mode = $("encounter-mode").value;
+        const contributor = $("contributor").value;
+        const recipient = $("recipient").value;
+        const witness = mode === "human" ? recipient : $("witness").value;
+        const description = $("description").value.trim();
+        const location = $("location").value.trim();
+        if (!description) { toast("Add a shared statement before preparing the proof.", true); return; }
+        if (contributor === recipient) { toast("Contributor and recipient must be different actors.", true); return; }
+        if (mode !== "human" && (witness === contributor || witness === recipient)) { toast("The AI encounter needs a distinct human witness.", true); return; }
+        const createdAt = new Date().toISOString();
+        const evidenceHash = await hashText(JSON.stringify({ mode, contributor, recipient, witness, category: $("category").value, description, epoch: state.epoch, createdAt }));
+        const locationHash = await hashText(`${location}|${state.epoch}|${evidenceHash}`);
+        const repeat = (state.pairCounts[pairKey(contributor, recipient)] || 0) + 1;
+        state.prepared = { mode, contributor, recipient, witness, category: $("category").value, description, location, createdAt, evidenceHash, locationHash, repeat, signatures: { contributor: false, recipient: false, witness: mode === "human" } };
+        save();
+        renderProof();
+        toast("Proof prepared. Collect the required confirmations.");
+      }
+
+      function drawCode(hash) {
+        const node = $("encounter-code");
+        node.innerHTML = "";
+        const clean = (hash || "0").replace("0x", "");
+        for (let i = 0; i < 64; i += 1) {
+          const cell = document.createElement("i");
+          const value = parseInt(clean[i % clean.length] || "0", 16);
+          if (((value + i * 3) % 5) < 2 || (i < 3) || (i > 60)) cell.classList.add("on");
+          node.appendChild(cell);
+        }
+      }
+
+      function sign(role) {
+        if (!state.prepared) return;
+        state.prepared.signatures[role] = true;
+        save();
+        renderProof();
+      }
+      function allSigned() {
+        if (!state.prepared) return false;
+        const s = state.prepared.signatures;
+        return s.contributor && s.recipient && s.witness;
+      }
+
+      async function anchorEncounter() {
+        const item = state.prepared;
+        if (!item || !allSigned()) return;
+        if (state.actors[item.recipient].balance <= -1) {
+          toast(`${item.recipient} is already at the −1 floor and must contribute before receiving again.`, true);
+          return;
+        }
+        const key = pairKey(item.contributor, item.recipient);
+        state.pairCounts[key] = (state.pairCounts[key] || 0) + 1;
+        state.actors[item.contributor].balance += 1;
+        state.actors[item.recipient].balance -= 1;
+        state.actors[item.contributor].contributions += 1;
+        state.actors[item.recipient].receipts += 1;
+        addCounterpart(item.contributor, item.recipient);
+        addCounterpart(item.recipient, item.contributor);
+        state.actors[item.contributor].reputation += 1 / Math.sqrt(state.pairCounts[key]);
+        const transactionHash = await hashText(`${item.evidenceHash}|block:${state.block}|epoch:${state.epoch}`);
+        state.encounters.unshift({ ...item, signatures: undefined, transactionHash, block: state.block, epoch: state.epoch, pairRepeat: state.pairCounts[key], anchoredAt: new Date().toISOString() });
+        state.block += 1;
+        state.prepared = null;
+        save();
+        renderAll();
+        toast("Encounter anchored. The balance will reset; the receipt will remain.");
+      }
+
+      function renderProof() {
+        const item = state.prepared;
+        $("proof-empty").classList.toggle("hidden", Boolean(item));
+        $("proof-card").classList.toggle("visible", Boolean(item));
+        if (!item) { $("encounter-status").textContent = ""; return; }
+        $("proof-statement").textContent = item.description;
+        $("proof-hash").textContent = shortHash(item.evidenceHash);
+        $("location-hash").textContent = shortHash(item.locationHash);
+        $("pair-history").textContent = item.repeat === 1 ? "First encounter for this pair" : `Encounter ${item.repeat} for this pair today`;
+        $("marginal-score").textContent = `${(1 / Math.sqrt(item.repeat)).toFixed(3)} reputation units`;
+        drawCode(item.evidenceHash);
+        const c = $("sign-contributor"), r = $("sign-recipient"), w = $("sign-witness");
+        c.textContent = `${item.signatures.contributor ? "✓ " : ""}${item.contributor} confirms`;
+        r.textContent = `${item.signatures.recipient ? "✓ " : ""}${item.recipient} confirms`;
+        w.textContent = item.mode === "human" ? "Witness not required" : `${item.signatures.witness ? "✓ " : ""}${item.witness} witnesses`;
+        c.disabled = item.signatures.contributor;
+        r.disabled = item.signatures.recipient;
+        w.disabled = item.mode === "human" || item.signatures.witness;
+        [c, r, w].forEach((button) => button.classList.toggle("mint", button.disabled && button.textContent.startsWith("✓")));
+        $("anchor-encounter").disabled = !allSigned();
+        const count = item.mode === "human"
+          ? Number(item.signatures.contributor) + Number(item.signatures.recipient)
+          : Object.values(item.signatures).filter(Boolean).length;
+        const needed = item.mode === "human" ? 2 : 3;
+        $("encounter-status").textContent = `${Math.min(count, needed)} of ${needed} required confirmations collected.`;
+      }
+
+      function renderActors() {
+        $("actor-grid").innerHTML = HUMANS.map((name) => {
+          const item = state.actors[name];
+          const status = item.balance > 0 ? "Eligible at midnight" : item.balance < 0 ? "No payout · no punishment" : "Neutral · no payout";
+          const tone = item.balance > 0 ? "good" : item.balance < 0 ? "bad" : "";
+          return `<article class="actor-card"><div class="actor-head"><strong>${name}</strong><small>${item.counterparts.length} unique</small></div><div class="balance ${tone}">${fmtSigned(item.balance)}</div><div class="actor-status ${tone}">${status}</div><div class="actor-details">Contributed ${item.contributions} · received ${item.receipts}<br>Reputation ${item.reputation.toFixed(3)} · donated ${fmt(item.donatedUsd)} USDC</div><div class="claim-row"><span>${fmt(item.claimable)} claimable</span><button class="button ghost small" data-claim="${name}" ${item.claimable <= 0 ? "disabled" : ""}>Claim</button></div></article>`;
+        }).join("");
+        const ai = state.actors[AGENT];
+        $("agent-strip").innerHTML = `<span><strong>${AGENT}</strong> is a separate simulated actor. Daily position ${fmtSigned(ai.balance)}; reputation ${ai.reputation.toFixed(3)}.</span><span>${fmt(state.agentEarningsUsd)} USDC service bounty accrued</span>`;
+      }
+
+      function claim(name) {
+        const item = state.actors[name];
+        const amount = item.claimable;
+        if (amount <= 0) return;
+        if (amount > state.payoutLiquidityUsd + 0.0001) { toast("The mock payout account is underfunded.", true); return; }
+        item.claimable = 0;
+        item.claimed += amount;
+        state.payoutLiquidityUsd = Math.max(0, state.payoutLiquidityUsd - amount);
+        state.encounters.unshift({ kind: "claim", person: name, amount, epoch: state.epoch, anchoredAt: new Date().toISOString() });
+        save(); renderAll(); toast(`${name} independently claimed ${fmt(amount)} mock USDC.`);
+      }
+
+      function renderLedger() {
+        const list = state.encounters.slice(0, 12);
+        $("encounter-ledger").innerHTML = list.length ? list.map((item) => {
+          if (item.kind === "claim") return `<div class="ledger-entry"><span class="ledger-kind">Claim</span><p>${item.person} cashed out <strong>${fmt(item.amount)} mock USDC</strong>.</p><small>Epoch ${item.epoch}</small></div>`;
+          return `<div class="ledger-entry"><span class="ledger-kind">Confirmed</span><p><strong>${escapeHtml(item.contributor)}</strong> → <strong>${escapeHtml(item.recipient)}</strong><br>${escapeHtml(item.category)} · ${escapeHtml(item.description)}<br><code>${shortHash(item.transactionHash)}</code></p><small>Block ${item.block}<br>pair ×${item.pairRepeat}</small></div>`;
+        }).join("") : `<div class="empty">No receipt has been anchored yet. Try one of the two AI examples above.</div>`;
+      }
+
+      function renderMetrics() {
+        const reserve = reserveValue();
+        const preview = eligibleRows();
+        $("metric-eth").textContent = `${eth.format(state.reserveEth)} ETH`;
+        $("metric-reserve-usd").textContent = `${fmt(reserve)} mock USDC value`;
+        $("metric-floor").textContent = fmt(state.protectedFloorUsd);
+        $("metric-pool").textContent = fmt(preview.pool);
+        $("metric-debt").textContent = fmt(state.perpetualDebtUsd);
+        $("metric-epoch").textContent = `Epoch ${state.epoch}`;
+        $("metric-epoch-date").textContent = formatEpoch(state.epoch);
+        $("metric-pool").classList.toggle("bad", preview.pool <= 0);
+      }
+
+      function renderCommons() {
+        const current = reserveValue();
+        const harvest = previewHarvest();
+        const healthy = current + 0.0001 >= state.protectedFloorUsd;
+        $("reserve-condition").textContent = healthy ? `The reserve is ${fmt(current - state.protectedFloorUsd)} mock USDC above its protected floor.` : `The reserve is ${fmt(state.protectedFloorUsd - current)} mock USDC below its protected floor after an ETH price fall.`;
+        $("reserve-condition").className = healthy ? "panel-intro good" : "panel-intro bad";
+        const scale = Math.max(current, state.protectedFloorUsd, 1);
+        $("bar-protected").style.width = `${clamp(state.protectedFloorUsd / scale * 100, 0, 100)}%`;
+        $("bar-buffer").style.width = `${healthy ? clamp((current - state.protectedFloorUsd) / scale * 100, 0, 100) : 0}%`;
+        $("bar-risk").style.width = `${healthy ? 0 : clamp((state.protectedFloorUsd - current) / scale * 100, 0, 100)}%`;
+        $("reserve-price").textContent = `${fmt(state.priceUsd)} USDC`;
+        $("reserve-value").textContent = `${fmt(current)} USDC`;
+        $("reserve-hwm").textContent = `${fmt(state.highWaterUsd)} USDC`;
+        $("reserve-gain").textContent = `${fmt(harvest.gain)} USDC`;
+        $("reserve-harvest").textContent = `${fmt(harvest.amount)} USDC`;
+        $("reserve-revenue").textContent = `${fmt(state.pendingRevenueUsd)} USDC`;
+        $("reserve-liquidity").textContent = `${fmt(state.payoutLiquidityUsd)} USDC`;
+        $("eth-price").value = state.priceUsd;
+        $("harvest-mode").value = state.harvestMode;
+      }
+
+      function renderDistribution() {
+        const preview = eligibleRows();
+        $("distribution-body").innerHTML = preview.rows.map(({ name, actor: item, weight, share }) => {
+          const total = item.contributions + item.receipts;
+          const ratio = total ? `${item.counterparts.length} / ${total}` : "0 / 0";
+          return `<tr><td>${name}</td><td class="${item.balance > 0 ? "good" : item.balance < 0 ? "bad" : ""}">${fmtSigned(item.balance)}</td><td>${ratio}</td><td>${weight.toFixed(3)}</td><td>${share > 0 ? `${fmt(share)} USDC` : "—"}</td></tr>`;
+        }).join("");
+        $("distribution-total").textContent = `${fmt(preview.totalWeight ? preview.pool : 0)} USDC`;
+        $("distribution-debt-units").textContent = HUMANS.reduce((sum, name) => sum + Math.max(0, -state.actors[name].balance), 0).toString();
+      }
+
+      function finalizeEpoch() {
+        const preview = eligibleRows();
+        const oldEpoch = state.epoch;
+        const debtUnits = HUMANS.reduce((sum, name) => sum + Math.max(0, -state.actors[name].balance), 0);
+        let distributed = 0;
+        let harvested = 0;
+        const allocations = [];
+        if (preview.totalWeight > 0 && preview.pool > 0) {
+          harvested = preview.harvest.amount;
+          const peakBeforeHarvest = reserveValue();
+          if (harvested > 0) {
+            state.reserveEth = Math.max(0, state.reserveEth - harvested / state.priceUsd);
+            state.payoutLiquidityUsd += harvested;
+            state.highWaterUsd = Math.max(state.highWaterUsd, peakBeforeHarvest);
+          }
+          state.pendingRevenueUsd = 0;
+          preview.rows.forEach((row) => {
+            if (row.share > 0) {
+              state.actors[row.name].claimable += row.share;
+              distributed += row.share;
+              allocations.push({ name: row.name, amount: row.share, weight: row.weight });
+            }
+          });
+        }
+        state.absorbedDebtUnits += debtUnits;
+        state.epochHistory.unshift({ epoch: oldEpoch, finalizedAt: new Date().toISOString(), distributed, harvested, revenue: distributed ? Math.max(0, distributed - harvested) : 0, debtUnits, allocations });
+        Object.values(state.actors).forEach((item) => { item.balance = 0; item.contributions = 0; item.receipts = 0; item.counterparts = []; });
+        state.pairCounts = {};
+        state.prepared = null;
+        state.epoch += 1;
+        save(); renderAll();
+        toast(distributed > 0 ? `Epoch finalized: ${fmt(distributed)} mock USDC became claimable.` : "Epoch finalized. No eligible payout; funded revenue carries forward.");
+      }
+
+      function renderEpochHistory() {
+        $("epoch-history").innerHTML = state.epochHistory.length ? state.epochHistory.slice(0, 10).map((item) => {
+          const names = item.allocations.length ? item.allocations.map((a) => `${a.name} ${fmt(a.amount)}`).join(" · ") : "No eligible allocations";
+          return `<div class="ledger-entry"><span class="ledger-kind">Epoch ${item.epoch}</span><p><strong>${fmt(item.distributed)} mock USDC distributed</strong><br>${names}<br><small>${fmt(item.harvested)} from appreciation · ${item.debtUnits} negative unit${item.debtUnits === 1 ? "" : "s"} absorbed</small></p><small>${new Date(item.finalizedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</small></div>`;
+        }).join("") : `<div class="empty">No epoch has been finalized in this browser yet.</div>`;
+      }
+
+      function addDonation(donorName, amountEth, source = "Direct donation") {
+        if (!(amountEth > 0)) { toast("Enter a positive ETH amount.", true); return false; }
+        const value = amountEth * state.priceUsd;
+        state.reserveEth += amountEth;
+        state.protectedFloorUsd += value;
+        state.highWaterUsd += value;
+        state.perpetualDebtUsd += value;
+        if (state.actors[donorName]) { state.actors[donorName].donatedUsd += value; state.actors[donorName].reputation += Math.sqrt(amountEth); }
+        state.donations.unshift({ donor: donorName, eth: amountEth, price: state.priceUsd, value, epoch: state.epoch, source });
+        return true;
+      }
+
+      function renderBid() {
+        const floor = Number($("compute-floor").value) || 0;
+        const bid = Number($("gross-bid").value) || 0;
+        const minimum = floor / 0.60;
+        $("minimum-bid").textContent = `${fmt(minimum)} USDC`;
+        $("ai-bid-share").textContent = `${fmt(bid * 0.60)} USDC`;
+        $("agent-earnings").textContent = `${fmt(state.agentEarningsUsd)} USDC`;
+        $("protocol-reserve").textContent = `${fmt(state.protocolReserveUsd)} USDC`;
+      }
+
+      function checkBid(quiet = false) {
+        const budget = Number($("job-budget").value) || 0;
+        const floor = Number($("compute-floor").value) || 0;
+        const bid = Number($("gross-bid").value) || 0;
+        const aiShare = bid * 0.60;
+        const viable = bid > 0 && bid <= budget && aiShare + 0.0001 >= floor;
+        $("settle-job").disabled = !viable;
+        let message;
+        if (bid <= 0 || budget <= 0 || floor < 0) message = "Enter positive budget and bid values.";
+        else if (bid > budget) message = `Rejected: the ${fmt(bid)} bid exceeds the ${fmt(budget)} budget.`;
+        else if (aiShare < floor) message = `Rejected: the AI receives ${fmt(aiShare)}, below its ${fmt(floor)} compute floor.`;
+        else message = `Viable: ${fmt(aiShare)} covers compute; ${fmt(bid * .10)} converts to a Commons ETH contribution.`;
+        $("bid-status").textContent = message;
+        $("bid-status").className = `status-line ${viable ? "good" : "bad"}`;
+        renderBid();
+        if (!quiet) toast(message, !viable);
+        return viable;
+      }
+
+      function settleJob() {
+        if (!checkBid(true)) return;
+        const bid = Number($("gross-bid").value);
+        const type = $("job-type").value;
+        const person = $("job-human").value;
+        const split = { ai: bid * .60, human: bid * .25, commons: bid * .10, protocol: bid * .05 };
+        state.agentEarningsUsd += split.ai;
+        state.actors[person].claimable += split.human;
+        state.payoutLiquidityUsd += split.human;
+        state.protocolReserveUsd += split.protocol;
+        const donationEth = split.commons / state.priceUsd;
+        addDonation(AGENT, donationEth, "Agent-market contribution");
+        const label = type === "inspection" ? "AI commissioned a human stock inspection" : "Human commissioned AI stock analysis";
+        state.jobs.unshift({ type, label, person, bid, split, donationEth, epoch: state.epoch, settledAt: new Date().toISOString() });
+        save(); renderAll();
+        toast(`Job settled. ${person} earned ${fmt(split.human)} and ${eth.format(donationEth)} ETH entered the Commons.`);
+      }
+
+      function renderJobs() {
+        $("job-ledger").innerHTML = state.jobs.length ? state.jobs.slice(0, 10).map((job) => `<div class="ledger-entry"><span class="ledger-kind">Settled</span><p><strong>${escapeHtml(job.label)}</strong><br>${job.person} received ${fmt(job.split.human)} · AI ${fmt(job.split.ai)} · Commons ${fmt(job.split.commons)} · protocol ${fmt(job.split.protocol)} mock USDC</p><small>Epoch ${job.epoch}</small></div>`).join("") : `<div class="empty">No agent-market job has been settled yet.</div>`;
+      }
+
+      function exportState() {
+        const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `gameover-simulation-epoch-${state.epoch}.json`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        toast("Simulation JSON exported.");
+      }
+
+      function renderAll() {
+        renderMetrics(); renderCommons(); renderActors(); renderProof(); renderLedger(); renderDistribution(); renderEpochHistory(); renderBid(); renderJobs();
+      }
+
+      document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => showTab(button.dataset.tab)));
+      $("encounter-mode").addEventListener("change", () => { state.prepared = null; syncEncounterFields(); renderProof(); });
+      $("contributor").addEventListener("change", updateWitnessOptions);
+      $("recipient").addEventListener("change", updateWitnessOptions);
+      $("preset-inspection").addEventListener("click", () => loadPreset("inspection"));
+      $("preset-analysis").addEventListener("click", () => loadPreset("analysis"));
+      $("preset-human").addEventListener("click", () => loadPreset("human"));
+      $("prepare-encounter").addEventListener("click", prepareEncounter);
+      $("clear-encounter").addEventListener("click", () => { state.prepared = null; $("description").value = ""; save(); renderProof(); });
+      $("sign-contributor").addEventListener("click", () => sign("contributor"));
+      $("sign-recipient").addEventListener("click", () => sign("recipient"));
+      $("sign-witness").addEventListener("click", () => sign("witness"));
+      $("anchor-encounter").addEventListener("click", anchorEncounter);
+      $("actor-grid").addEventListener("click", (event) => { const name = event.target.dataset.claim; if (name) claim(name); });
+      $("apply-price").addEventListener("click", () => { const value = Number($("eth-price").value); if (!(value > 0)) { toast("Enter a positive ETH price.", true); return; } state.priceUsd = value; state.harvestMode = $("harvest-mode").value; save(); renderAll(); toast(`Mock oracle updated to ${fmt(value)} USDC per ETH.`); });
+      $("harvest-mode").addEventListener("change", () => { state.harvestMode = $("harvest-mode").value; save(); renderAll(); });
+      $("add-donation").addEventListener("click", () => { const amount = Number($("donation-eth").value); const donor = $("donor").value; if (addDonation(donor, amount)) { save(); renderAll(); toast(`${donor} added ${eth.format(amount)} simulated ETH without a withdrawal right.`); } });
+      $("add-revenue").addEventListener("click", () => { const amount = Number($("revenue-usd").value); if (!(amount > 0)) { toast("Enter a positive revenue amount.", true); return; } state.pendingRevenueUsd += amount; state.payoutLiquidityUsd += amount; save(); renderAll(); toast(`${fmt(amount)} mock USDC from ${$("revenue-source").value.toLowerCase()} is ready for the next eligible epoch.`); });
+      $("finalize-epoch").addEventListener("click", finalizeEpoch);
+      ["job-budget", "compute-floor", "gross-bid"].forEach((id) => $(id).addEventListener("input", () => { $("settle-job").disabled = true; $("bid-status").textContent = "Recheck the bid after changing its inputs."; $("bid-status").className = "status-line"; renderBid(); }));
+      $("check-bid").addEventListener("click", () => checkBid(false));
+      $("settle-job").addEventListener("click", settleJob);
+      $("job-type").addEventListener("change", () => {
+        $("job-human").value = $("job-type").value === "inspection" ? "Elijah" : "Jason";
+        $("settle-job").disabled = true;
+        $("bid-status").textContent = "Recheck the bid for the selected task.";
+        $("bid-status").className = "status-line";
+      });
+      $("export-state").addEventListener("click", exportState);
+      $("reset-simulation").addEventListener("click", () => { if (!window.confirm("Reset all local GameOver simulation data?")) return; state = freshState(); save(); loadPreset("human"); renderAll(); toast("Simulation reset to one mock ETH."); });
+
+      setSelectOptions($("donor"), HUMANS, "Rudolf");
+      setSelectOptions($("job-human"), HUMANS, "Elijah");
+      syncEncounterFields({ contributor: "Pam", recipient: "Elijah" });
+      checkBid(true);
+      renderAll();
+
+      window.GameOverLab = { getState: () => JSON.parse(JSON.stringify(state)), previewHarvest, finalizeEpoch, reset: () => { state = freshState(); save(); renderAll(); } };
+    })();
+  </script>
+</body>
+</html>
