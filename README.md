@@ -1,137 +1,194 @@
-# GameOver
+# GameOver v4
 
-GameOver is a live two-wallet Proof-of-Encounter experiment for Ethereum Sepolia. One wallet proposes that an exchange occurred, the named beneficiary confirms the same salted statement digest, and the contract records the receipt.
+GameOver v4 is a Sepolia-only Proof-of-Encounter experiment. A contributor proposes one directional contribution, the pre-addressed receiver confirms the same private commitment before 00:00 UTC, and the contributor earns that day’s `+1`. The receiver remains neutral.
 
-This package deliberately excludes the Economy Lab, agent market, ETH reserve, oracle, payouts, biometric verification, location proof and independent witness. It proves one bounded mechanism first.
+Both the browser and contract enforce Sepolia chain ID `11155111`; an attempted v4 deployment on another chain reverts.
 
-## Core rule
+> **Status:** the v4 code is complete and tested locally, but `config.js` intentionally contains a zero contract address. A new v4 contract must be deployed on Sepolia before the on-chain controls become live. The old v3 address is incompatible with v4.
 
-- Each wallet begins every UTC day at position `0`.
-- A confirmed provider moves `+1`.
-- A confirmed beneficiary moves `-1`.
-- A wallet already at `-1` must provide before it can receive again that day.
-- Pending proposals expire when the UTC day changes.
-- Daily positions automatically read as zero after UTC midnight.
-- Confirmed receipts and lifetime provided/received totals remain.
+Headline: **One Encounter. Confirmed by Both.**
 
-There is no reset transaction or reset button. The contract derives the active day from `block.timestamp / 1 days`. The rollover becomes authoritative with the first Sepolia block after 00:00 UTC.
+Tagline: **All in a day’s work.**
+
+## Locked v4 rules
+
+- Roles are **Contributor** and **Receiver**.
+- An encounter is one-way: `A → B`. The contributor proposes and the named receiver confirms. A reverse `B → A` contribution needs a separate encounter.
+- Confirmation gives the contributor `+1`; receiving creates no point, debt or negative value.
+- A monetary payment does not itself count as a contribution.
+- Only one credited `A → B` encounter is permitted per UTC epoch. v4 proves wallets, not unique humans.
+- An unconfirmed invitation expires at Protocol Sunrise (`00:00 UTC`). It is rejected after sunrise and never rolls into the next epoch.
+- Daily points do not carry over. Confirmed receipts, lifetime counts and Commons Debt remain.
+- Location is entirely absent from v4. It is future-version memory only.
+- AI agents are deferred.
+- No payout estimate is shown. The interface shows only finalized status and ETH that is actually claimable.
+- Errors and warnings use orange. Red identifies the receiver role; mint identifies the contributor, positive confirmation and claimable value.
+
+The complete decision record is in [V4_SPEC.md](V4_SPEC.md).
+
+## Working, simulated and deferred
+
+| Classification | v4 scope |
+| --- | --- |
+| Implemented for Sepolia | MetaMask connection; pre-addressed private links and QR codes; matching two-wallet confirmation; UTC expiry; daily `+1`; cancel/decline; history; permanent Genesis deposits; separate test payout funding; epoch budgets; finalization; allocations; full pull claims |
+| Explicitly simulated | ETH/USD closing price and appreciation input; future income represented by manually seeded Sepolia test ETH; AI structuring represented by user-entered text |
+| Deferred | Mainnet and real-value rewards; location/H3; AI agents and forwarding; personhood or biometrics; stronger Sybil resistance; permanent encrypted storage; governance; PWA/offline; mass allocation |
+| Omitted | Payout estimates; bilateral credit in one encounter; disputes |
+
+## Economic test mechanism
+
+The deployer becomes `demoOperator`. That role may only set test epoch budgets and simulated ETH/USD closes; it has no withdrawal function and cannot remove Genesis principal or claimant allocations.
+
+The initial simulated ETH/USD high-water mark is `$3,000.00` with 8 decimal places. For a closed epoch:
+
+1. The demo operator must have earmarked an `epochBudget` from the funded test payout pool before the epoch closes.
+2. The demo operator enters a non-zero simulated close after the epoch ends.
+3. Anyone may call `finalizeEpoch(epoch)` after Protocol Sunrise, but closed epochs must be finalized chronologically. This prevents a later market high from changing an earlier epoch’s outcome.
+4. If the close is strictly above the prior high-water mark, the close becomes the new benchmark. If the epoch also has eligible contributors and a non-zero budget, the whole budget is released for claims.
+5. Otherwise, nothing is allocated and the reserved budget returns to the available test pool. Daily contribution points expire rather than carry over.
+
+For contributor `i`, with `cᵢ` unique credited counterparts in the epoch:
+
+```text
+scaledWeightᵢ = floor(1,000,000,000 × sqrt(cᵢ))
+claimᵢ = floor(epochPool × scaledWeightᵢ / totalScaledWeight)
+```
+
+Claims round down to wei. Once every eligible contributor has claimed, residual rounding dust returns to the unallocated test payout pool. It is not protocol income.
+
+## Reserve accounting
+
+There are two named payable routes:
+
+- `contributeToGenesis()` permanently increases `permanentPrincipal`. It earns no point, has no withdrawal route and cannot fund claims.
+- `seedPayoutPool()` adds spendable Sepolia test ETH. It earns no point and does not increase Genesis principal.
+
+The contract continuously preserves the stronger accounting invariant:
+
+```text
+contract balance >= permanentPrincipal + totalReservedBudgets + totalAllocatedUnclaimed
+```
+
+Only the remaining surplus is returned by `availablePool()` and may be reserved for new test budgets.
+
+## Private bearer invites
+
+The browser creates a random encounter ID and salt, then binds the statement to the chain, v4 contract, encounter ID and both wallet addresses with SHA-256. Only the resulting `bytes32` commitment is sent to Ethereum.
+
+After the proposal is mined, the browser encrypts the exact description and salt with AES-256-GCM. The ciphertext and its one-time content key travel in the URL fragment after `#invite=`. The same complete URL is encoded in the QR.
+
+This is the accepted v4 cross-device compromise:
+
+- URL fragments are normally not sent to the web host.
+- The app gates decryption to the named receiver wallet and verifies the decrypted content against Sepolia.
+- Anyone who obtains the complete bearer link can nevertheless extract its key and potentially read the description.
+- Clearing browser storage may remove the readable local history. The on-chain commitment and receipt remain.
+- There is no server-side or permanent encrypted statement store in v4.
+
+Send private invites only through a channel suitable for their content. Do not put secrets, private keys, recovery phrases or highly sensitive personal information in a description.
+
+## Browser and wallet support
+
+v4 targets current desktop and Android Chrome with MetaMask. QR generation is local and works without a camera. QR scanning uses Chrome’s `BarcodeDetector` and camera permission; when unavailable, paste the complete invite link instead.
+
+Use distinct Sepolia accounts for the contributor and receiver. One person may control both during a demo, but that proves only two wallet signatures, not two humans.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | Live two-wallet application |
-| `styles.css` | Black, white, red and mint GameOver interface |
-| `app.js` | MetaMask connection and on-chain encounter flow |
-| `core.js` | Dependency-free hashing, sharing and ABI utilities |
-| `config.js` | Sepolia contract address and deployment block |
-| `GameOverEncounter.sol` | Ownerless Solidity contract |
-| `LICENSE` | MIT licence |
+| `index.html` | Responsive encounter, Commons, history, build-status and about views |
+| `styles.css` | Dark GameOver visual system and red/mint/orange role semantics |
+| `app.js` | MetaMask, raw ABI calls, encounter lifecycle, QR scanning, Commons and claims |
+| `core.js` | ABI, SHA-256, AES-GCM, invite and integer-formatting utilities |
+| `config.js` | Sepolia-only runtime configuration and legacy v3 reference |
+| `GameOverEncounter.sol` | Immutable v4 encounter and test-economy contract |
+| `vendor/qrcode.js` | Vendored MIT QR generator used for local invite QR creation |
+| `tests/` | Core, static and Ganache contract behavior tests |
+| `V4_SPEC.md` | Final design/mechanics decisions and invariants |
+| `AI_USAGE.md` | Detailed authorship and AI-assistance disclosure |
+| `THIRD_PARTY_NOTICES.md` | Vendored dependency notice |
 
-## Wallet preparation
+## Run locally
 
-Use two different Sepolia addresses. For a rehearsal, the same person may control both addresses through separate browsers. This demonstrates the two-wallet protocol but not independent human identity.
+Static browser use needs no build step:
 
-- The provider/deployer wallet pays contract deployment gas and proposal gas.
-- The beneficiary wallet pays confirmation gas.
-- Sepolia ETH is valueless test currency.
-- Never enter a Secret Recovery Phrase or private key into this app, Remix, GitHub or a faucet.
-
-The contract does not accept ETH. The daily `+1/-1` position is not a token or financial balance.
-
-## Deploy the contract through Remix
-
-1. Ensure the provider MetaMask wallet is selected and its network is **Sepolia**.
-2. Open only the current official Remix IDE at `https://app.remix.live/`.
-3. In Remix, create `GameOverEncounter.sol` and paste in the supplied contract.
-4. Open **Solidity Compiler** and compile with version `0.8.24` and optimization enabled at 200 runs.
-5. Open **Deploy & Run Transactions**.
-6. Select **Browser Extension** as the environment.
-7. Confirm Remix displays the correct provider wallet and Sepolia network.
-8. Leave **Value** at `0`. The contract has no constructor arguments.
-9. Click **Deploy** and approve the deployment transaction in MetaMask.
-10. After confirmation, copy the new contract address.
-11. Open the deployment transaction on Sepolia Etherscan and note its block number.
-
-The wallet that deploys the contract receives no owner or administrator power. The contract is ownerless and immutable; a corrected version requires a new deployment.
-
-## Deployed Sepolia instance
-
-This package is preconfigured for the source-verified GameOver contract deployed during the live demo setup:
-
-- Contract: `0xfECeA47A488e2f6e37580781B3BB045A6fbfF9B1`
-- Deployment block: `11681142`
-- Network: Sepolia (`11155111`)
-
-## Configure the application after a future redeployment
-
-No configuration change is needed for the deployed instance above. If the contract is redeployed later, open `config.js` and replace only these two values:
-
-```javascript
-contractAddress: "0xYOUR_NEW_DEPLOYED_CONTRACT_ADDRESS",
-deploymentBlock: "YOUR_NEW_DEPLOYMENT_BLOCK_NUMBER",
+```bash
+python3 -m http.server 8080
 ```
 
-Keep the quotation marks. Do not change the Sepolia chain ID.
+Then open `http://localhost:8080`. The page will remain safely unconfigured until the v4 address is added.
+
+For reproducible tests and compilation:
+
+```bash
+npm install
+npm test
+npm run compile
+```
+
+`npm test` covers invite encryption/tamper rejection, maximum-size QR generation, language and scope checks, contract compilation, directional pair caps, wrong-wallet rejection, cancellation, decline, midnight expiry, reserve separation, the accounting invariant, high-water settlement, square-root allocation, full claims and rounding dust.
+
+## Deploy v4 to Sepolia
+
+The deployment is intentionally left for the project owner’s MetaMask confirmation.
+
+1. Type and verify the current stable Remix URL, `https://app.remix.live/`, then create `GameOverEncounter.sol` using the file in this package. Do not use a lookalike domain.
+2. In **Solidity Compiler**, choose compiler `0.8.24`, enable optimization and set runs to `200`.
+3. Compile `GameOverEncounter.sol` and resolve any error before proceeding.
+4. In **Deploy & Run Transactions**, choose the injected browser wallet/MetaMask environment.
+5. Verify in both Remix and MetaMask that the chain is **Sepolia (11155111)**.
+6. The constructor has no arguments. Recommended: leave deployment **Value** at `0`; make any permanent Genesis deposit later through the named app control so its purpose is explicit. A constructor value is also treated as permanent principal.
+7. Deploy and approve the transaction in MetaMask.
+8. Record the new contract address, deployment transaction hash and deployment block from Sepolia Etherscan.
+9. Do **not** reuse the v3 address `0xfECe…F9B1`; its ABI and negative-score mechanism are incompatible.
+10. Update only these fields in `config.js`:
+
+```javascript
+contractAddress: "0xYOUR_NEW_V4_CONTRACT_ADDRESS",
+deploymentBlock: "YOUR_V4_DEPLOYMENT_BLOCK",
+```
+
+11. Reload the page. The orange configuration warning must disappear and the header must report a live v4 contract connection.
+12. Before funding anything, confirm that the app reads `0 ETH` Genesis principal, `0 ETH` available pool, `$3,000.00` high-water mark and a holding accounting invariant.
+13. Verify the source on Sepolia Etherscan with Solidity `0.8.24`, optimizer enabled and `200` runs. There are no constructor arguments.
+
+The deployed bytecode is below the EVM contract-size limit. The contract is immutable and unaudited; a defect requires a new deployment. Use test ETH only.
+
+## First end-to-end rehearsal
+
+### Encounter
+
+1. Contributor connects Account A on Sepolia, enters Account B, describes the contribution and creates the invite.
+2. Contributor shows the QR or copies the private invite link. The separate **Copy receiver address** action is available for verification.
+3. Receiver opens/scans it in the second browser and connects exactly Account B.
+4. The app decrypts locally, recomputes the commitment and checks contributor, receiver, digest, epoch and status against Sepolia.
+5. Receiver confirms with the neutral white button. Account A now reads one more `+1`; Account B remains neutral.
+6. Repeat A→B in the same UTC epoch to demonstrate the enforced pair cap. Reverse B→A requires a new encounter.
+7. Create another invite and cancel it as A; create another and decline it as its receiver.
+
+### Commons and claims
+
+1. Use **Seed payout pool** to add a small amount of Sepolia test ETH.
+2. While connected as the deploying demo operator, reserve a small budget for the current epoch.
+3. Complete at least one qualifying encounter in that epoch.
+4. After 00:00 UTC, enter a simulated close above the current high-water mark for the closed epoch.
+5. Connect any wallet and finalize the next required closed epoch. If days were skipped, enter their simulated closes and settle them in order.
+6. Reconnect the contributor. Only the finalized claimable amount appears—never an estimate.
+7. Claim the full epoch allocation and inspect the Etherscan transaction.
+
+For a no-release path, repeat with a close at or below the high-water mark. The budget returns to the available pool and the day’s points do not carry forward.
 
 ## Publish on GitHub Pages
 
-Copy these eight files into the root of the GameOver repository:
+The production page remains static. Commit the runtime files and `vendor/` directory to the branch/folder selected under **Settings → Pages**. Do not publish `node_modules/` or `build/`. No API key, backend or build command is required.
 
-```text
-index.html
-styles.css
-app.js
-core.js
-config.js
-GameOverEncounter.sol
-README.md
-LICENSE
-```
-
-`LICENSE` deliberately has no extension. Commit the files to the branch and folder currently selected under **Settings > Pages**. No build command, API key, server or package installation is required.
-
-## Run the two-browser encounter
-
-### Provider browser
-
-1. Open the published GameOver page.
-2. Connect the provider MetaMask wallet.
-3. MetaMask should show **Sepolia**.
-4. Paste the beneficiary address.
-5. Describe what was exchanged in 280 characters or fewer.
-6. Click **Propose with MetaMask** and approve the transaction.
-7. Wait for Sepolia confirmation, then copy the generated confirmation link.
-
-### Beneficiary browser
-
-1. Paste the confirmation link into the second browser.
-2. Connect the beneficiary MetaMask wallet.
-3. GameOver recalculates the salted digest and checks the participants, digest, status and UTC day against the live contract.
-4. Review the statement.
-5. Click **Confirm as beneficiary** and approve the transaction.
-6. After confirmation, the beneficiary displays `-1`, the provider displays `+1`, and both lifetime histories update.
-
-The provider browser may need **Refresh** to display the confirmation made in the other browser.
-
-## Test the UTC rollover
-
-Complete at least one encounter before 00:00 UTC. Leave both pages open or reopen them after midnight.
-
-The interface counts down to the contract's next UTC boundary and automatically reads the new position. No wallet approval is requested because this is a free read, not a transaction. The daily positions show `0` after the first post-midnight Sepolia block, while the encounter remains in **Confirmed encounters** and lifetime totals remain unchanged.
-
-A proposal created before midnight but not confirmed before midnight expires and must be proposed again.
-
-## Statement privacy
-
-The exact statement and a random salt are placed in the URL fragment after `#confirm=` and stored locally in each participating browser. URL fragments are not sent to the GitHub Pages server. Ethereum stores only the resulting `bytes32` digest.
-
-Anyone who receives the full confirmation link can read its statement. Clearing browser data can remove the readable local copy. The Ethereum receipt will remain, but another browser will show it as a private statement unless it also has the link.
+Because a private invite contains an origin-specific page URL, publish/configure the final URL before recording a submission video or distributing QR codes.
 
 ## Security boundary
 
-This is experimental, unaudited hackathon software intended for Sepolia only. Two wallet confirmations prove control of two addresses and agreement with one statement digest. They do not prove that two independent humans met, that the described exchange occurred, or that the statement is objectively true.
+This is experimental, unaudited Sepolia software. It demonstrates wallet control, mutual agreement with a commitment and deterministic accounting. It does not establish unique human identity, objective truth, contribution quality, physical presence or resistance to coordinated wallets. The demo operator can manipulate the simulated budget and close inputs. Mainnet rewards remain deliberately disabled until those boundaries are materially stronger.
 
 ## Author and assistance disclosure
 
-GameOver was conceived and directed by Rudolf Hellmut Hartwig as a solo ETHOnline 2026 project. ChatGPT and Codex assisted with protocol scoping, Solidity and frontend implementation, testing and documentation.
+GameOver was conceived and directed by Rudolf Hellmut Hartwig as a solo ETHOnline 2026 project. ChatGPT and Codex assisted with protocol scoping, Solidity and frontend implementation, testing and documentation. The file-by-file disclosure is in [AI_USAGE.md](AI_USAGE.md).
