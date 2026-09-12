@@ -1,39 +1,105 @@
-(function runGameOver() {
+(function runGameOverV4() {
   "use strict";
 
   const Core = window.GameOverCore;
   const config = window.GAMEOVER_CONFIG;
   const ethereum = window.ethereum;
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+  const SECONDS_PER_EPOCH = 86_400n;
+  const MAX_HISTORY_EPOCHS = 50;
+
   const SELECTORS = Object.freeze({
-    balanceOf: "70a08231",
-    canReceive: "90d370ba",
+    accountingInvariantHolds: "b6ad264f",
+    availablePool: "2af674dd",
+    cancelEncounter: "ad81f834",
+    claim: "aab8ab0c",
+    claimable: "88d8b2a7",
+    commonsDebt: "f201a152",
     confirmEncounter: "3db09858",
-    confirmedEncounterCount: "4ce145c5",
+    contributeToGenesis: "3427fe63",
+    contributorEpochAt: "c2ce0fe0",
+    contributorEpochCount: "3bda6266",
     currentEpoch: "76671808",
+    dailyContributions: "d855c510",
+    declineEncounter: "2e260ac5",
+    demoOperator: "7b3ecd0c",
     encounters: "895db358",
-    lifetimeProvided: "dce26a47",
+    encounterStatus: "6bd8ac86",
+    epochBudget: "62678ff7",
+    finalizeEpoch: "4f6ec99b",
+    GENESIS_TARGET: "352fbb87",
+    highWaterMark: "1e8410da",
+    lifetimeContributed: "db3efe8a",
     lifetimeReceived: "5a832c59",
-    nextResetAt: "ff58dc62",
-    proposeEncounter: "4d9a6558"
+    mockEpochClosePrice: "d6493e22",
+    nextEpochToFinalize: "81674f35",
+    nextSunriseAt: "7dc8e570",
+    payoutClaimed: "05355edb",
+    permanentPrincipal: "7c1d1fe0",
+    proposeEncounter: "4d9a6558",
+    seedPayoutPool: "096ba4fc",
+    setEpochBudget: "443408ea",
+    setMockEpochClosePrice: "5e162be4",
+    settlements: "7ab9b6c6",
+    totalAllocatedUnclaimed: "12c21562",
+    totalReservedBudgets: "4347e60d"
   });
-  const CONFIRMED_EVENT_TOPIC = "0x42fbaf7f30926567a8d54a6e3490cd2005bc6084c9068f81d75f3f1ce375b0cd";
+
+  const CONFIRMED_EVENT_TOPIC = "0xd6b9701fb8fd40f67f5269b140fb27dec84a3161689ea778335f537c6d08a1ee";
+  const STATUS_NAMES = Object.freeze(["None", "Invited", "Confirmed", "Declined", "Cancelled", "Expired"]);
+  const ERROR_MESSAGES = Object.freeze({
+    "646cf558": "That epoch allocation has already been claimed.",
+    "054cefac": "That budget exceeds the currently available test payout pool.",
+    "95b66fe9": "Enter an amount greater than zero.",
+    "90463a35": "The encounter ID cannot be empty.",
+    "72e3a075": "The statement commitment cannot be empty.",
+    "ffae465d": "That encounter already exists.",
+    "3262e317": "This invite expired at Protocol Sunrise. Create a new encounter.",
+    "478d8969": "This encounter is no longer awaiting a response.",
+    "9de7c265": "A budget cannot be changed after its epoch has closed.",
+    "3366263c": "That epoch has already been finalized.",
+    "aafac234": "Epochs must be finalized in chronological order. Use the next required epoch shown in the Commons.",
+    "a993769a": "This epoch is still open. Finalize it after Protocol Sunrise.",
+    "6d963f88": "The test ETH transfer failed. The allocation remains protected.",
+    "4e23d035": "That contribution-history index does not exist.",
+    "1e4ec46b": "Enter a valid receiver wallet.",
+    "70614846": "Set a simulated closing price before finalizing this epoch.",
+    "49248f77": "The payout arithmetic exceeded its supported range.",
+    "969bf728": "This wallet has no allocation to claim for that epoch.",
+    "5dd9d427": "Only the contributor can cancel this invite.",
+    "5fae125f": "Only the v4 demo operator can set simulated budgets or prices.",
+    "0d1ca202": "Connect the receiver wallet named in this invite.",
+    "c80c9592": "This contributor has already received credit for this A→B pair today.",
+    "290aba20": "A claim is already in progress.",
+    "4df58749": "Contributor and receiver must be different wallets.",
+    "915b886d": "That epoch did not release a payout.",
+    "a82a4bcf": "Choose either the Genesis deposit or test payout-pool route."
+  });
 
   const state = {
     account: null,
     chainId: null,
-    nextResetAt: null,
+    contractVerified: false,
     currentEpoch: null,
-    reviewPayload: null,
+    nextSunriseAt: null,
+    nextEpochToFinalize: null,
+    demoOperator: null,
+    lastInvite: null,
+    reviewToken: null,
+    reviewHeader: null,
+    reviewPrivate: null,
     reviewEncounter: null,
     reviewVerified: false,
+    activeRoute: "encounter",
     busy: false,
-    lastRolloverAttempt: 0
+    scannerStream: null,
+    scannerTimer: null,
+    scannerDetecting: false,
+    lastSunriseRefresh: 0
   };
 
   const $ = id => document.getElementById(id);
   const elements = {
-    walletChip: $("wallet-chip"),
     connectButton: $("connect-button"),
     liveDot: $("live-dot"),
     networkLabel: $("network-label"),
@@ -41,72 +107,149 @@
     configurationAlert: $("configuration-alert"),
     accountValue: $("account-value"),
     accountRole: $("account-role"),
-    positionMetric: $("position-metric"),
-    positionValue: $("position-value"),
-    positionDetail: $("position-detail"),
+    dailyValue: $("daily-value"),
     countdownValue: $("countdown-value"),
-    resetDetail: $("reset-detail"),
-    lifetimeValue: $("lifetime-value"),
-    form: $("encounter-form"),
-    beneficiary: $("beneficiary-address"),
+    sunriseDetail: $("sunrise-detail"),
+    claimableValue: $("claimable-value"),
+    claimableDetail: $("claimable-detail"),
+    encounterForm: $("encounter-form"),
+    receiverAddress: $("receiver-address"),
+    pasteAddressButton: $("paste-address-button"),
     statement: $("statement"),
     statementCount: $("statement-count"),
     proposeButton: $("propose-button"),
     proposalResult: $("proposal-result"),
-    shareLink: $("share-link"),
+    proposalExpiry: $("proposal-expiry"),
+    showQrButton: $("show-qr-button"),
     copyLinkButton: $("copy-link-button"),
+    copyAddressButton: $("copy-address-button"),
     proposalTransactionLink: $("proposal-transaction-link"),
+    cancelButton: $("cancel-button"),
     confirmationEmpty: $("confirmation-empty"),
     confirmationCard: $("confirmation-card"),
-    reviewProvider: $("review-provider"),
-    reviewBeneficiary: $("review-beneficiary"),
+    openInviteForm: $("open-invite-form"),
+    inviteLinkInput: $("invite-link-input"),
+    reviewContributor: $("review-contributor"),
+    reviewReceiver: $("review-receiver"),
     reviewEpoch: $("review-epoch"),
     reviewStatus: $("review-status"),
     reviewStatement: $("review-statement"),
     reviewDigest: $("review-digest"),
     verificationLine: $("verification-line"),
     confirmButton: $("confirm-button"),
+    declineButton: $("decline-button"),
     confirmationTransactionLink: $("confirmation-transaction-link"),
-    refreshButton: $("refresh-button"),
+    scanQrButton: $("scan-qr-button"),
+    qrDialog: $("qr-dialog"),
+    qrCode: $("qr-code"),
+    modalCopyLinkButton: $("modal-copy-link-button"),
+    scannerDialog: $("scanner-dialog"),
+    scannerVideo: $("scanner-video"),
+    scannerStatus: $("scanner-status"),
+    stopScannerButton: $("stop-scanner-button"),
+    genesisValue: $("genesis-value"),
+    genesisTargetDetail: $("genesis-target-detail"),
+    poolValue: $("pool-value"),
+    reservedValue: $("reserved-value"),
+    allocatedValue: $("allocated-value"),
+    debtValue: $("debt-value"),
+    hwmValue: $("hwm-value"),
+    invariantLine: $("invariant-line"),
+    genesisForm: $("genesis-form"),
+    genesisAmount: $("genesis-amount"),
+    poolForm: $("pool-form"),
+    poolAmount: $("pool-amount"),
+    operatorLine: $("operator-line"),
+    settlementSummary: $("settlement-summary"),
+    budgetForm: $("budget-form"),
+    budgetEpoch: $("budget-epoch"),
+    budgetAmount: $("budget-amount"),
+    closeForm: $("close-form"),
+    closeEpoch: $("close-epoch"),
+    closePrice: $("close-price"),
+    finalizeButton: $("finalize-button"),
+    claimList: $("claim-list"),
+    refreshClaimsButton: $("refresh-claims-button"),
     ledger: $("encounter-ledger"),
+    refreshHistoryButton: $("refresh-history-button"),
+    liveBuildLabel: $("live-build-label"),
+    liveBuildHeading: $("live-build-heading"),
     toast: $("toast")
   };
 
   function configuredContract() {
-    return Core.isAddress(config.contractAddress) && config.contractAddress.toLowerCase() !== ZERO_ADDRESS;
+    return Core.isAddress(config.contractAddress) && Core.normalizeAddress(config.contractAddress) !== ZERO_ADDRESS;
   }
 
   function contractAddress() {
-    if (!configuredContract()) throw new Error("The contract address has not been added to config.js.");
+    if (!configuredContract()) throw new Error("The v4 contract address has not been added to config.js.");
     return Core.normalizeAddress(config.contractAddress);
   }
 
   function correctNetwork() {
-    return String(state.chainId || "").toLowerCase() === config.chainId.toLowerCase();
+    return String(state.chainId || "").toLowerCase() === String(config.chainId).toLowerCase();
   }
 
-  function readyForChain() {
-    return Boolean(ethereum && state.account && correctNetwork() && configuredContract());
+  function readyForRead() {
+    return Boolean(ethereum && correctNetwork() && configuredContract());
+  }
+
+  function readyForWrite() {
+    return Boolean(readyForRead() && state.contractVerified && state.account);
+  }
+
+  function isDemoOperator() {
+    return Boolean(state.account && state.demoOperator && state.account === state.demoOperator);
+  }
+
+  function callData(selectorName, words) {
+    return Core.encodeCall(SELECTORS[selectorName], words || []);
+  }
+
+  function txUrl(hash) {
+    return `${config.explorerBaseUrl}/tx/${hash}`;
+  }
+
+  function addressTopic(address) {
+    return `0x${Core.strip0x(Core.normalizeAddress(address)).padStart(64, "0")}`;
   }
 
   function friendlyError(error) {
     if (!error) return "Something went wrong.";
     if (error.code === 4001) return "The MetaMask request was rejected.";
-    const message = error.shortMessage || error.reason || error.message || String(error);
-    if (/DailyReceiveLimitReached/i.test(message)) {
-      return "This beneficiary is already at −1 today and must provide an encounter before receiving again.";
+    const fragments = [];
+    const seen = new WeakSet();
+    const collect = value => {
+      if (!value || fragments.length > 30) return;
+      if (typeof value === "string") fragments.push(value);
+      else if (typeof value === "object") {
+        if (seen.has(value)) return;
+        seen.add(value);
+        ["message", "shortMessage", "reason", "data", "error", "cause", "originalError"].forEach(key => collect(value[key]));
+      }
+    };
+    collect(error);
+    const combined = fragments.join(" ");
+    for (const [selector, message] of Object.entries(ERROR_MESSAGES)) {
+      if (combined.toLowerCase().includes(selector)) return message;
     }
-    if (/EncounterExpired/i.test(message)) return "This proposal expired at UTC midnight. Create a new encounter.";
-    return message.replace(/^execution reverted:?\s*/i, "");
+    if (/user rejected|user denied/i.test(combined)) return "The MetaMask request was rejected.";
+    if (/insufficient funds/i.test(combined)) return "This wallet does not have enough Sepolia ETH for the amount and gas.";
+    if (/failed to fetch|network error/i.test(combined)) return "The Sepolia connection failed. Check MetaMask and try again.";
+    const message = error.shortMessage || error.reason || error.message || fragments[0] || String(error);
+    return String(message)
+      .replace(/^execution reverted:?\s*/i, "")
+      .replace(/^Internal JSON-RPC error\.?\s*/i, "")
+      .slice(0, 360);
   }
 
   let toastTimer;
-  function showToast(message, isError) {
+  function showToast(message, warning) {
     clearTimeout(toastTimer);
     elements.toast.textContent = message;
-    elements.toast.classList.toggle("error", Boolean(isError));
+    elements.toast.classList.toggle("warning", Boolean(warning));
     elements.toast.classList.add("show");
-    toastTimer = setTimeout(() => elements.toast.classList.remove("show"), 4200);
+    toastTimer = setTimeout(() => elements.toast.classList.remove("show"), 4800);
   }
 
   function setBusy(busy) {
@@ -115,17 +258,28 @@
   }
 
   function updateControls() {
-    const ready = readyForChain();
-    elements.proposeButton.disabled = state.busy || !ready;
-    elements.refreshButton.disabled = state.busy || !ready;
-    elements.confirmButton.disabled = state.busy || !ready || !state.reviewVerified;
+    const writeReady = readyForWrite();
+    elements.proposeButton.disabled = state.busy || !writeReady;
+    elements.confirmButton.disabled = state.busy || !writeReady || !state.reviewVerified;
+    elements.declineButton.disabled = state.busy || !writeReady || !state.reviewVerified;
+    elements.cancelButton.disabled = state.busy || !writeReady || !state.lastInvite || state.lastInvite.status !== 1;
+    elements.genesisForm.querySelector("button[type='submit']").disabled = state.busy || !writeReady;
+    elements.poolForm.querySelector("button[type='submit']").disabled = state.busy || !writeReady;
+    elements.budgetForm.querySelector("button[type='submit']").disabled = state.busy || !writeReady || !isDemoOperator();
+    const closedEpochReady = state.nextEpochToFinalize !== null
+      && state.currentEpoch !== null
+      && state.nextEpochToFinalize < state.currentEpoch;
+    elements.closeForm.querySelector("button[type='submit']").disabled = state.busy || !writeReady || !isDemoOperator() || !closedEpochReady;
+    elements.finalizeButton.disabled = state.busy || !writeReady || !closedEpochReady;
+    elements.refreshClaimsButton.disabled = state.busy || !readyForRead() || !state.account;
+    elements.refreshHistoryButton.disabled = state.busy || !readyForRead() || !state.account;
 
     if (!ethereum) {
       elements.connectButton.textContent = "MetaMask required";
       elements.connectButton.disabled = true;
     } else if (state.account && correctNetwork()) {
-      elements.connectButton.textContent = "Connected";
-      elements.connectButton.disabled = true;
+      elements.connectButton.textContent = Core.shortAddress(state.account);
+      elements.connectButton.disabled = state.busy;
     } else if (state.account) {
       elements.connectButton.textContent = "Switch to Sepolia";
       elements.connectButton.disabled = state.busy;
@@ -137,40 +291,54 @@
 
   function renderConnection() {
     elements.configurationAlert.hidden = configuredContract();
+    elements.liveBuildLabel.textContent = state.contractVerified ? "Live on Sepolia" : "Built for Sepolia";
+    elements.liveBuildHeading.textContent = state.contractVerified ? "Implemented end to end" : "Enabled after v4 deployment";
     elements.accountValue.textContent = Core.shortAddress(state.account);
-    elements.walletChip.textContent = state.account ? Core.shortAddress(state.account) : "Wallet disconnected";
-    elements.accountRole.textContent = state.account ? "Ready for either encounter role" : "Connect to begin";
+    elements.accountRole.textContent = state.account ? "Ready as contributor or receiver" : "Connect to begin";
     elements.networkLabel.textContent = correctNetwork() ? "Sepolia" : (state.chainId ? "Wrong network" : "Sepolia");
+    elements.liveDot.classList.remove("ready", "warning");
 
-    elements.liveDot.classList.remove("ready", "error");
     if (!ethereum) {
-      elements.networkDetail.textContent = "MetaMask not detected";
-      elements.liveDot.classList.add("error");
-    } else if (!state.account) {
-      elements.networkDetail.textContent = "Waiting for wallet";
+      elements.networkDetail.textContent = "MetaMask was not detected in this browser.";
+      elements.liveDot.classList.add("warning");
     } else if (!correctNetwork()) {
-      elements.networkDetail.textContent = "Switch required";
-      elements.liveDot.classList.add("error");
+      elements.networkDetail.textContent = state.account ? "Switch MetaMask to Sepolia." : "Connect MetaMask on Sepolia.";
+      elements.liveDot.classList.add("warning");
     } else if (!configuredContract()) {
-      elements.networkDetail.textContent = "Contract not configured";
-      elements.liveDot.classList.add("error");
+      elements.networkDetail.textContent = "Browser ready; new v4 deployment not configured.";
+      elements.liveDot.classList.add("warning");
+    } else if (!state.contractVerified) {
+      elements.networkDetail.textContent = "Checking the configured v4 contract…";
+      elements.liveDot.classList.add("warning");
     } else {
-      elements.networkDetail.textContent = "Live contract connection";
+      elements.networkDetail.textContent = state.account ? "Live v4 contract connection." : "Live v4 contract available; wallet disconnected.";
       elements.liveDot.classList.add("ready");
     }
     updateControls();
   }
 
-  function renderPosition(position) {
-    const value = Number(position || 0);
-    elements.positionValue.textContent = Core.formatPosition(value);
-    elements.positionMetric.classList.remove("position-positive", "position-negative", "position-neutral");
-    elements.positionMetric.classList.add(value > 0 ? "position-positive" : value < 0 ? "position-negative" : "position-neutral");
-    elements.positionDetail.textContent = value <= -1
-      ? "Provide before receiving again"
-      : value > 0
-        ? "Contribution recorded today"
-        : "Resets each UTC day";
+  function setRoute(route, updateHash) {
+    const next = ["encounter", "commons", "history", "build", "about"].includes(route) ? route : "encounter";
+    state.activeRoute = next;
+    document.querySelectorAll("[data-view]").forEach(view => {
+      const active = view.dataset.view === next;
+      view.hidden = !active;
+      view.classList.toggle("active", active);
+    });
+    document.querySelectorAll(".nav-link[data-route]").forEach(button => {
+      const active = button.dataset.route === next;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    if (updateHash) window.history.replaceState(null, "", `#${next}`);
+    if (updateHash) window.scrollTo({ top: 0, behavior: "auto" });
+    if (next === "history" && readyForRead() && state.account) refreshHistory().catch(reportError);
+    if (next === "commons" && readyForRead()) refreshCommons().catch(reportError);
+  }
+
+  function reportError(error) {
+    showToast(friendlyError(error), true);
   }
 
   async function connectWallet() {
@@ -183,491 +351,986 @@
       }
       state.chainId = await ethereum.request({ method: "eth_chainId" });
       if (!correctNetwork()) {
-        await ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: config.chainId }]
-        });
+        await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: config.chainId }] });
         state.chainId = await ethereum.request({ method: "eth_chainId" });
       }
       renderConnection();
-      if (readyForChain()) await refreshAll();
+      await refreshAll();
+      if (state.reviewHeader) await verifyReview();
     } catch (error) {
-      showToast(friendlyError(error), true);
+      reportError(error);
     } finally {
       setBusy(false);
     }
   }
 
   async function readCall(data) {
-    const result = await ethereum.request({
-      method: "eth_call",
-      params: [{ to: contractAddress(), data }, "latest"]
-    });
-    return result;
+    if (!readyForRead()) throw new Error("Connect MetaMask to Sepolia and configure the v4 contract first.");
+    return ethereum.request({ method: "eth_call", params: [{ to: contractAddress(), data }, "latest"] });
   }
 
-  function decodeSingleUint(value) {
-    const words = Core.splitWords(value);
-    if (!words.length) throw new Error("Empty contract response. Check the deployed contract address.");
-    return Core.decodeUintWord(words[0]);
+  async function readUint(selectorName, words) {
+    const response = await readCall(callData(selectorName, words));
+    const decoded = Core.splitWords(response);
+    if (!decoded.length) throw new Error("The contract returned an empty response. Check config.js.");
+    return Core.decodeUintWord(decoded[0]);
   }
 
-  function decodeSingleInt(value) {
-    const words = Core.splitWords(value);
-    if (!words.length) throw new Error("Empty contract response. Check the deployed contract address.");
-    return Core.decodeIntWord(words[0]);
+  async function readBool(selectorName, words) {
+    const response = await readCall(callData(selectorName, words));
+    const decoded = Core.splitWords(response);
+    if (!decoded.length) throw new Error("The contract returned an empty response. Check config.js.");
+    return Core.decodeBoolWord(decoded[0]);
   }
 
-  async function sendTransaction(data) {
-    if (!readyForChain()) throw new Error("Connect MetaMask to Sepolia first.");
-    const transactionHash = await ethereum.request({
-      method: "eth_sendTransaction",
-      params: [{ from: state.account, to: contractAddress(), data }]
-    });
-    showToast("Transaction submitted. Waiting for Sepolia…");
-    const receipt = await waitForReceipt(transactionHash);
-    if (receipt.status && receipt.status !== "0x1") throw new Error("The transaction failed on Sepolia.");
-    return { transactionHash, receipt };
+  async function readAddress(selectorName, words) {
+    const response = await readCall(callData(selectorName, words));
+    const decoded = Core.splitWords(response);
+    if (!decoded.length) throw new Error("The contract returned an empty response. Check config.js.");
+    return Core.decodeAddressWord(decoded[0]);
+  }
+
+  async function readEncounter(id) {
+    const response = await readCall(callData("encounters", [Core.encodeBytes32(id)]));
+    return Core.decodeEncounter(response);
+  }
+
+  async function readSettlement(epoch) {
+    const response = await readCall(callData("settlements", [Core.encodeUint(epoch)]));
+    return Core.decodeSettlement(response);
   }
 
   async function waitForReceipt(transactionHash) {
-    for (let attempt = 0; attempt < 150; attempt += 1) {
-      const receipt = await ethereum.request({
-        method: "eth_getTransactionReceipt",
-        params: [transactionHash]
-      });
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      const receipt = await ethereum.request({ method: "eth_getTransactionReceipt", params: [transactionHash] });
       if (receipt) return receipt;
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     throw new Error("Sepolia is taking longer than expected. Check the transaction on Etherscan.");
   }
 
-  function localStorageKey() {
-    const suffix = configuredContract() ? contractAddress() : "unconfigured";
-    return `gameover:encounters:v1:${suffix}`;
+  async function sendTransaction(data, value) {
+    if (!readyForWrite()) throw new Error("Connect MetaMask to Sepolia first.");
+    const transaction = { from: state.account, to: contractAddress(), data };
+    if (typeof value === "bigint") transaction.value = Core.hexQuantity(value);
+    const transactionHash = await ethereum.request({ method: "eth_sendTransaction", params: [transaction] });
+    showToast("Transaction submitted. Waiting for Sepolia…");
+    const receipt = await waitForReceipt(transactionHash);
+    if (receipt.status && receipt.status !== "0x1") throw new Error("The transaction failed on Sepolia.");
+    return { transactionHash, receipt };
+  }
+
+  function storageKey() {
+    return `gameover:encounters:v4:${configuredContract() ? contractAddress() : "unconfigured"}`;
   }
 
   function readLocalRecords() {
     try {
-      return JSON.parse(localStorage.getItem(localStorageKey()) || "{}");
+      const parsed = JSON.parse(localStorage.getItem(storageKey()) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
     } catch (_error) {
       return {};
     }
   }
 
-  function saveLocalRecord(payload, transactionHash) {
+  function saveLocalRecord(record) {
     const records = readLocalRecords();
-    records[payload.id.toLowerCase()] = {
-      statement: payload.statement,
-      provider: payload.provider,
-      beneficiary: payload.beneficiary,
-      digest: payload.digest,
-      transactionHash: transactionHash || records[payload.id.toLowerCase()]?.transactionHash || ""
-    };
-    localStorage.setItem(localStorageKey(), JSON.stringify(records));
+    const key = String(record.id).toLowerCase();
+    records[key] = { ...(records[key] || {}), ...record, id: key };
+    try {
+      localStorage.setItem(storageKey(), JSON.stringify(records));
+    } catch (_error) {
+      // The active encounter still works when storage is blocked; readable
+      // private history will then last only for this browser session.
+    }
+    return records[key];
   }
 
   function pageWithoutHash() {
     return window.location.href.split("#")[0];
   }
 
+  function inviteLink(token) {
+    return `${pageWithoutHash()}#invite=${token}`;
+  }
+
+  async function copyText(value, successMessage) {
+    if (!value) throw new Error("There is nothing to copy yet.");
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch (_error) {
+      const field = document.createElement("textarea");
+      field.value = value;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("Copying is unavailable. Select and copy the value manually.");
+    }
+    showToast(successMessage || "Copied.");
+  }
+
+  function epochDate(epoch) {
+    const start = new Date(Number(BigInt(epoch) * SECONDS_PER_EPOCH) * 1000);
+    return start.toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  function sunriseLabel(epoch) {
+    const sunrise = new Date(Number((BigInt(epoch) + 1n) * SECONDS_PER_EPOCH) * 1000);
+    return `${sunrise.toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short" })}, 00:00 UTC`;
+  }
+
+  function statusName(status) {
+    return STATUS_NAMES[Number(status)] || "Unknown";
+  }
+
+  function setStatusText(element, text, kind) {
+    element.textContent = text;
+    element.classList.remove("verified", "warning");
+    if (kind) element.classList.add(kind);
+  }
+
+  async function refreshProtocol() {
+    if (!readyForRead()) {
+      state.contractVerified = false;
+      state.currentEpoch = BigInt(Math.floor(Date.now() / 86_400_000));
+      state.nextSunriseAt = (state.currentEpoch + 1n) * SECONDS_PER_EPOCH;
+      state.nextEpochToFinalize = null;
+      elements.dailyValue.textContent = "0";
+      elements.claimableValue.textContent = "0 ETH";
+      tickCountdown();
+      return;
+    }
+
+    const commonCalls = [readUint("currentEpoch"), readUint("nextSunriseAt"), readAddress("demoOperator"), readUint("nextEpochToFinalize")];
+    const accountCalls = state.account
+      ? [
+          readUint("dailyContributions", [Core.encodeAddress(state.account)]),
+          readUint("lifetimeContributed", [Core.encodeAddress(state.account)]),
+          readUint("lifetimeReceived", [Core.encodeAddress(state.account)])
+        ]
+      : [Promise.resolve(0n), Promise.resolve(0n), Promise.resolve(0n)];
+    const [epoch, sunrise, operator, nextEpochToFinalize, daily, lifetimeContributed, lifetimeReceived] = await Promise.all([...commonCalls, ...accountCalls]);
+    state.currentEpoch = epoch;
+    state.nextSunriseAt = sunrise;
+    state.demoOperator = operator;
+    state.nextEpochToFinalize = nextEpochToFinalize;
+    state.contractVerified = true;
+    elements.dailyValue.textContent = daily.toString();
+    elements.accountRole.textContent = state.account
+      ? `${lifetimeContributed} contributed · ${lifetimeReceived} received, lifetime`
+      : "Connect to begin";
+    if (!elements.budgetEpoch.value) elements.budgetEpoch.value = epoch.toString();
+    elements.closeEpoch.value = nextEpochToFinalize.toString();
+    tickCountdown();
+    renderConnection();
+  }
+
+  function tickCountdown() {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const fallback = ((now / SECONDS_PER_EPOCH) + 1n) * SECONDS_PER_EPOCH;
+    const target = state.nextSunriseAt || fallback;
+    const remaining = target > now ? target - now : 0n;
+    const hours = String(remaining / 3600n).padStart(2, "0");
+    const minutes = String((remaining % 3600n) / 60n).padStart(2, "0");
+    const seconds = String(remaining % 60n).padStart(2, "0");
+    elements.countdownValue.textContent = `${hours}:${minutes}:${seconds}`;
+    elements.sunriseDetail.textContent = `${new Date(Number(target) * 1000).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short" })} · 00:00 UTC · no rollover`;
+    if (remaining === 0n && Date.now() - state.lastSunriseRefresh > 30_000) {
+      state.lastSunriseRefresh = Date.now();
+      refreshAll().catch(reportError);
+    }
+  }
+
+  async function refreshCommons() {
+    if (!readyForRead()) return;
+    if (state.currentEpoch === null) await refreshProtocol();
+    const [principal, target, pool, reserved, allocated, debt, hwm, invariant] = await Promise.all([
+      readUint("permanentPrincipal"),
+      readUint("GENESIS_TARGET"),
+      readUint("availablePool"),
+      readUint("totalReservedBudgets"),
+      readUint("totalAllocatedUnclaimed"),
+      readUint("commonsDebt"),
+      readUint("highWaterMark"),
+      readBool("accountingInvariantHolds")
+    ]);
+    elements.genesisValue.textContent = `${Core.formatEth(principal, 6)} ETH`;
+    const remaining = target > principal ? target - principal : 0n;
+    elements.genesisTargetDetail.textContent = remaining > 0n ? `${Core.formatEth(remaining, 6)} ETH to 0.01 target` : "0.01 ETH target reached";
+    elements.poolValue.textContent = `${Core.formatEth(pool, 6)} ETH`;
+    elements.reservedValue.textContent = `${Core.formatEth(reserved, 6)} ETH`;
+    elements.allocatedValue.textContent = `${Core.formatEth(allocated, 6)} ETH`;
+    elements.debtValue.textContent = `Ω ${debt}`;
+    elements.hwmValue.textContent = `$${Core.formatUsdPrice(hwm)}`;
+    setStatusText(elements.invariantLine, invariant
+      ? "Accounting invariant holds: protected ETH is fully backed."
+      : "Accounting invariant failed. Do not transact with this deployment.", invariant ? "verified" : "warning");
+    elements.operatorLine.textContent = isDemoOperator()
+      ? "This wallet is the demo operator: it may enter simulated budgets and ETH/USD closes. Any wallet may finalize."
+      : `Demo operator ${Core.shortAddress(state.demoOperator)} controls only simulated budgets and closes. Any wallet may finalize.`;
+    await refreshSettlementSummary();
+    if (state.account) await refreshClaims();
+    updateControls();
+  }
+
+  async function refreshSettlementSummary() {
+    if (!readyForRead() || state.currentEpoch === null || state.nextEpochToFinalize === null) return;
+    const epoch = state.nextEpochToFinalize;
+    if (epoch >= state.currentEpoch) {
+      elements.settlementSummary.innerHTML = [
+        `<div><span>Next required epoch</span><strong>${epoch} · ${epochDate(epoch)}</strong></div>`,
+        '<div><span>State</span><strong>Still open</strong></div>',
+        '<div><span>Available after</span><strong>Protocol Sunrise</strong></div>'
+      ].join("");
+      return;
+    }
+    const [settlement, mockClose, pendingBudget] = await Promise.all([
+      readSettlement(epoch),
+      readUint("mockEpochClosePrice", [Core.encodeUint(epoch)]),
+      readUint("epochBudget", [Core.encodeUint(epoch)])
+    ]);
+    const close = settlement.finalized ? settlement.closePrice : mockClose;
+    const outcome = !settlement.finalized ? "Awaiting finalization" : settlement.released ? "Budget released" : "No release";
+    const outcomeClass = settlement.released ? "mint-text" : (!settlement.finalized ? "" : "danger-text");
+    elements.settlementSummary.innerHTML = [
+      `<div><span>Next required epoch</span><strong>${epoch} · ${epochDate(epoch)}</strong></div>`,
+      `<div><span>Simulated close</span><strong>${close > 0n ? `$${Core.formatUsdPrice(close)}` : "Not entered"}</strong></div>`,
+      `<div><span>Outcome</span><strong class="${outcomeClass}">${outcome}</strong></div>`,
+      `<div><span>Reserved budget</span><strong>${Core.formatEth(pendingBudget, 6)} test ETH</strong></div>`,
+      `<div><span>Released pool</span><strong>${Core.formatEth(settlement.pool, 6)} test ETH</strong></div>`,
+      `<div><span>Remaining claims</span><strong>${Core.formatEth(settlement.remaining, 6)} test ETH</strong></div>`
+    ].join("");
+  }
+
+  async function refreshClaims() {
+    if (!readyForRead() || !state.account) {
+      elements.claimableValue.textContent = "0 ETH";
+      elements.claimList.innerHTML = '<p class="ledger-empty">Connect a wallet to load allocations.</p>';
+      return;
+    }
+    const count = await readUint("contributorEpochCount", [Core.encodeAddress(state.account)]);
+    const numericCount = Number(count);
+    const start = Math.max(0, numericCount - MAX_HISTORY_EPOCHS);
+    const epochCalls = [];
+    for (let index = start; index < numericCount; index += 1) {
+      epochCalls.push(readUint("contributorEpochAt", [Core.encodeAddress(state.account), Core.encodeUint(index)]));
+    }
+    const epochs = (await Promise.all(epochCalls)).reverse();
+    const entries = await Promise.all(epochs.map(async epoch => {
+      const [settlement, amount, claimed] = await Promise.all([
+        readSettlement(epoch),
+        readUint("claimable", [Core.encodeUint(epoch), Core.encodeAddress(state.account)]),
+        readBool("payoutClaimed", [Core.encodeUint(epoch), Core.encodeAddress(state.account)])
+      ]);
+      return { epoch, settlement, amount, claimed };
+    }));
+    const total = entries.reduce((sum, entry) => sum + entry.amount, 0n);
+    elements.claimableValue.textContent = `${Core.formatEth(total, 6)} ETH`;
+    elements.claimableDetail.textContent = total > 0n ? `${entries.filter(entry => entry.amount > 0n).length} epoch allocation(s)` : "No released allocation";
+    renderClaims(entries);
+  }
+
+  function renderClaims(entries) {
+    elements.claimList.replaceChildren();
+    if (!entries.length) {
+      const empty = document.createElement("p");
+      empty.className = "ledger-empty";
+      empty.textContent = "No credited contribution epochs for this wallet yet.";
+      elements.claimList.appendChild(empty);
+      return;
+    }
+    entries.forEach(entry => {
+      const row = document.createElement("article");
+      row.className = "claim-row";
+      const copy = document.createElement("div");
+      const title = document.createElement("h4");
+      title.textContent = `Epoch ${entry.epoch} · ${epochDate(entry.epoch)}`;
+      const detail = document.createElement("p");
+      if (!entry.settlement.finalized) detail.textContent = "Awaiting permissionless finalization";
+      else if (entry.claimed) detail.textContent = "Allocation claimed";
+      else if (!entry.settlement.released) detail.textContent = "No appreciation release; daily points expired";
+      else detail.textContent = "Released allocation · full claim only";
+      copy.append(title, detail);
+      if (entry.amount > 0n) {
+        const button = document.createElement("button");
+        button.className = "button button-mint button-small";
+        button.type = "button";
+        button.dataset.claimEpoch = entry.epoch.toString();
+        button.textContent = `Claim ${Core.formatEth(entry.amount, 6)} ETH`;
+        button.disabled = state.busy || !readyForWrite();
+        row.append(copy, button);
+      } else {
+        const amount = document.createElement("span");
+        amount.className = "claim-amount";
+        amount.textContent = entry.claimed ? "Claimed" : "0 ETH";
+        row.append(copy, amount);
+      }
+      elements.claimList.appendChild(row);
+    });
+  }
+
+  async function refreshAll() {
+    renderConnection();
+    await refreshProtocol();
+    if (!readyForRead()) return;
+    await Promise.all([
+      refreshCommons(),
+      state.account ? refreshHistory() : Promise.resolve(),
+      state.account ? restorePendingInvite() : Promise.resolve()
+    ]);
+  }
+
   async function proposeEncounter(event) {
     event.preventDefault();
     try {
-      if (!readyForChain()) throw new Error("Connect MetaMask to Sepolia first.");
-      const beneficiary = Core.normalizeAddress(elements.beneficiary.value.trim());
-      if (beneficiary === state.account) throw new Error("Provider and beneficiary must use different wallet addresses.");
+      if (!readyForWrite()) throw new Error("Connect MetaMask to Sepolia first.");
+      const receiver = Core.normalizeAddress(elements.receiverAddress.value.trim());
+      if (receiver === state.account) throw new Error("Contributor and receiver must use different wallet addresses.");
       const statement = elements.statement.value.trim();
-      if (!statement) throw new Error("Describe what was exchanged.");
-      if (statement.length > 280) throw new Error("Keep the statement within 280 characters.");
+      if (!statement) throw new Error("Describe the contribution.");
+      if (statement.length > 280) throw new Error("Keep the description within 280 characters.");
 
       setBusy(true);
-      elements.proposeButton.textContent = "Approve in MetaMask…";
-      const encounterId = Core.randomHex(32);
+      const id = Core.randomHex(32);
       const salt = Core.randomHex(32);
-      const digest = await Core.statementDigest(statement, salt);
-      const data = Core.encodeCall(SELECTORS.proposeEncounter, [
-        Core.encodeBytes32(encounterId),
-        Core.encodeAddress(beneficiary),
-        Core.encodeBytes32(digest)
-      ]);
-
-      const { transactionHash } = await sendTransaction(data);
-      const epoch = await readCall(Core.encodeCall(SELECTORS.currentEpoch, []));
-      const payload = {
-        version: 1,
-        chainId: config.chainId,
+      const digest = await Core.statementDigest(statement, salt, {
+        chainId: config.chainIdDecimal,
         contract: contractAddress(),
-        id: encounterId,
-        provider: state.account,
-        beneficiary,
+        id,
+        contributor: state.account,
+        receiver
+      });
+      saveLocalRecord({ id, statement, salt, contributor: state.account, receiver, digest, status: "Submitting", createdAt: Date.now() });
+
+      const data = callData("proposeEncounter", [Core.encodeBytes32(id), Core.encodeAddress(receiver), Core.encodeBytes32(digest)]);
+      const { transactionHash } = await sendTransaction(data);
+      const encounter = await readEncounter(id);
+      const header = {
+        chainId: config.chainIdDecimal,
+        contract: contractAddress(),
+        id,
+        contributor: state.account,
+        receiver,
+        digest,
+        epoch: encounter.epoch.toString()
+      };
+      const token = await Core.encryptInvite(header, { statement, salt });
+      const link = inviteLink(token);
+      const record = saveLocalRecord({
+        id,
         statement,
         salt,
+        contributor: state.account,
+        receiver,
         digest,
-        epoch: decodeSingleUint(epoch).toString()
-      };
-      const link = `${pageWithoutHash()}#confirm=${Core.encodePayload(payload)}`;
-      saveLocalRecord(payload, transactionHash);
-      elements.shareLink.value = link;
-      elements.proposalTransactionLink.href = `${config.explorerBaseUrl}/tx/${transactionHash}`;
-      elements.proposalResult.hidden = false;
-      elements.proposalResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      showToast("Proposal confirmed on Sepolia. Share the link with the beneficiary.");
-      await refreshAll();
+        epoch: encounter.epoch.toString(),
+        proposedAt: encounter.proposedAt.toString(),
+        status: "Invited",
+        invite: token,
+        transactionHash
+      });
+      state.lastInvite = { ...record, link, status: 1 };
+      renderProposal();
+      elements.encounterForm.reset();
+      elements.statementCount.textContent = "0 / 280";
+      showToast("Invite recorded on Sepolia. Send the private link before Protocol Sunrise.");
+      await refreshProtocol();
     } catch (error) {
-      showToast(friendlyError(error), true);
+      reportError(error);
     } finally {
-      elements.proposeButton.textContent = "Propose with MetaMask";
       setBusy(false);
     }
   }
 
-  async function copyShareLink() {
-    if (!elements.shareLink.value) return;
-    try {
-      await navigator.clipboard.writeText(elements.shareLink.value);
-      showToast("Confirmation link copied.");
-    } catch (_error) {
-      elements.shareLink.focus();
-      elements.shareLink.select();
-      showToast("Link selected. Press Ctrl+C to copy it.");
+  function renderProposal() {
+    const invite = state.lastInvite;
+    elements.proposalResult.hidden = !invite;
+    if (!invite) return;
+    elements.proposalExpiry.textContent = sunriseLabel(invite.epoch);
+    elements.proposalTransactionLink.href = invite.transactionHash ? txUrl(invite.transactionHash) : "#";
+    elements.proposalTransactionLink.hidden = !invite.transactionHash;
+    elements.cancelButton.hidden = invite.status !== 1;
+    elements.showQrButton.disabled = invite.status !== 1;
+    elements.copyLinkButton.disabled = invite.status !== 1;
+    elements.copyAddressButton.disabled = false;
+    updateControls();
+  }
+
+  async function restorePendingInvite() {
+    if (!readyForRead() || !state.account || state.lastInvite) return;
+    const records = Object.values(readLocalRecords())
+      .filter(record => record.contributor === state.account && record.statement && record.salt)
+      .sort((a, b) => Number(b.proposedAt || b.createdAt || 0) - Number(a.proposedAt || a.createdAt || 0));
+    for (const record of records.slice(0, 8)) {
+      try {
+        const encounter = await readEncounter(record.id);
+        const effectiveStatus = Number(await readUint("encounterStatus", [Core.encodeBytes32(record.id)]));
+        if (effectiveStatus !== 1) continue;
+        let token = record.invite;
+        if (!token) {
+          token = await Core.encryptInvite({
+            chainId: config.chainIdDecimal,
+            contract: contractAddress(),
+            id: record.id,
+            contributor: encounter.contributor,
+            receiver: encounter.receiver,
+            digest: encounter.statementDigest,
+            epoch: encounter.epoch.toString()
+          }, { statement: record.statement, salt: record.salt });
+          saveLocalRecord({ id: record.id, invite: token, epoch: encounter.epoch.toString(), status: "Invited" });
+        }
+        state.lastInvite = { ...record, invite: token, link: inviteLink(token), epoch: encounter.epoch.toString(), status: 1 };
+        renderProposal();
+        return;
+      } catch (_error) {
+        // A stale local record must not prevent the rest of the app from loading.
+      }
     }
   }
 
-  function statusLabel(status) {
-    return status === 1 ? "Proposed" : status === 2 ? "Confirmed" : "Not found";
+  async function cancelInvite() {
+    if (!state.lastInvite) return;
+    try {
+      setBusy(true);
+      const { transactionHash } = await sendTransaction(callData("cancelEncounter", [Core.encodeBytes32(state.lastInvite.id)]));
+      state.lastInvite.status = 4;
+      saveLocalRecord({ id: state.lastInvite.id, status: "Cancelled", cancellationTransactionHash: transactionHash });
+      renderProposal();
+      showToast("Invite cancelled on Sepolia.");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function loadReviewPayload() {
-    state.reviewPayload = null;
-    state.reviewEncounter = null;
-    state.reviewVerified = false;
-    elements.confirmationEmpty.hidden = false;
-    elements.confirmationCard.hidden = true;
-    elements.confirmationTransactionLink.hidden = true;
+  function extractInviteToken(value) {
+    const text = String(value || "").trim();
+    if (!text) throw new Error("Paste a complete GameOver invite link.");
+    if (text.length > 8_192) throw new Error("That invite link is larger than the v4 safety limit.");
+    try {
+      const url = new URL(text, window.location.href);
+      const token = new URLSearchParams(url.hash.replace(/^#/, "")).get("invite");
+      if (token) return token;
+    } catch (_error) {
+      // Continue and allow the raw bearer token form.
+    }
+    if (text.startsWith("#invite=")) return decodeURIComponent(text.slice(8));
+    if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(text)) return text;
+    throw new Error("That is not a complete GameOver v4 invite link.");
+  }
 
-    const match = window.location.hash.match(/^#confirm=(.+)$/);
-    if (!match) {
+  async function loadInvite(value, keepInAddressBar) {
+    try {
+      const token = extractInviteToken(value);
+      const header = Core.inviteHeader(token);
+      state.reviewToken = token;
+      state.reviewHeader = header;
+      state.reviewPrivate = null;
+      state.reviewEncounter = null;
+      state.reviewVerified = false;
+      setRoute("encounter", false);
+      elements.confirmationEmpty.hidden = true;
+      elements.confirmationCard.hidden = false;
+      elements.reviewContributor.textContent = Core.shortAddress(header.contributor);
+      elements.reviewContributor.title = header.contributor;
+      elements.reviewReceiver.textContent = Core.shortAddress(header.receiver);
+      elements.reviewReceiver.title = header.receiver;
+      elements.reviewEpoch.textContent = `${header.epoch} · ${epochDate(header.epoch)}`;
+      elements.reviewStatus.textContent = "Awaiting verification";
+      elements.reviewDigest.textContent = header.digest;
+      elements.reviewStatement.textContent = "Connect the named receiver wallet to decrypt.";
+      setStatusText(elements.verificationLine, "Connect the named receiver wallet to verify this invite.");
+      elements.confirmationTransactionLink.hidden = true;
       updateControls();
+      if (keepInAddressBar) window.history.replaceState(null, "", `#invite=${token}`);
+      window.requestAnimationFrame(() => {
+        elements.confirmationCard.closest(".receiver-panel")?.scrollIntoView({ block: "start", behavior: "auto" });
+      });
+      if (state.account && readyForRead()) await verifyReview();
+    } catch (error) {
+      reportError(error);
+    }
+  }
+
+  async function verifyReview() {
+    const header = state.reviewHeader;
+    state.reviewVerified = false;
+    updateControls();
+    if (!header) return;
+    if (String(header.chainId) !== String(config.chainIdDecimal)) {
+      setStatusText(elements.verificationLine, "This invite targets a different network, not Sepolia v4.", "warning");
+      return;
+    }
+    if (!configuredContract()) {
+      setStatusText(elements.verificationLine, "The v4 contract has not been configured in this build.", "warning");
+      return;
+    }
+    if (header.contract !== contractAddress()) {
+      setStatusText(elements.verificationLine, "This invite belongs to a different GameOver contract.", "warning");
+      return;
+    }
+    if (!state.account) {
+      setStatusText(elements.verificationLine, "Connect the named receiver wallet to verify this invite.");
+      return;
+    }
+    if (!correctNetwork()) {
+      setStatusText(elements.verificationLine, "Switch MetaMask to Sepolia to verify this invite.", "warning");
+      return;
+    }
+    if (state.account !== header.receiver) {
+      elements.reviewStatement.textContent = "Private description hidden: this is not the named receiver wallet.";
+      setStatusText(elements.verificationLine, `Wrong wallet. Connect receiver ${Core.shortAddress(header.receiver)}.`, "warning");
       return;
     }
 
     try {
-      const payload = Core.decodePayload(match[1]);
-      Core.encodeBytes32(payload.id);
-      Core.encodeBytes32(payload.salt);
-      Core.encodeBytes32(payload.digest);
-      payload.provider = Core.normalizeAddress(payload.provider);
-      payload.beneficiary = Core.normalizeAddress(payload.beneficiary);
-      if (typeof payload.statement !== "string" || !payload.statement.trim() || payload.statement.length > 280) {
-        throw new Error("The encounter statement is missing or invalid.");
-      }
-      if (String(payload.chainId).toLowerCase() !== config.chainId.toLowerCase()) {
-        throw new Error("This confirmation link targets a different network.");
-      }
-      if (configuredContract() && Core.normalizeAddress(payload.contract) !== contractAddress()) {
-        throw new Error("This confirmation link targets a different contract.");
-      }
-      const calculatedDigest = await Core.statementDigest(payload.statement, payload.salt);
-      if (calculatedDigest.toLowerCase() !== payload.digest.toLowerCase()) {
-        throw new Error("The statement does not match its commitment.");
-      }
+      setStatusText(elements.verificationLine, "Decrypting locally and matching the Sepolia commitment…");
+      const decrypted = await Core.decryptInvite(state.reviewToken);
+      const statement = String(decrypted.privatePayload.statement || "");
+      if (!statement.trim() || statement.length > 280) throw new Error("The private description is outside the v4 size limit.");
+      const salt = decrypted.privatePayload.salt;
+      const digest = await Core.statementDigest(statement, salt, {
+        chainId: config.chainIdDecimal,
+        contract: contractAddress(),
+        id: header.id,
+        contributor: header.contributor,
+        receiver: header.receiver
+      });
+      if (digest !== header.digest) throw new Error("The private description does not match the invite commitment.");
 
-      state.reviewPayload = payload;
-      elements.confirmationEmpty.hidden = true;
-      elements.confirmationCard.hidden = false;
-      elements.reviewProvider.textContent = Core.shortAddress(payload.provider);
-      elements.reviewProvider.title = payload.provider;
-      elements.reviewBeneficiary.textContent = Core.shortAddress(payload.beneficiary);
-      elements.reviewBeneficiary.title = payload.beneficiary;
-      const epochDate = new Date(Number(payload.epoch) * 86400000).toISOString().slice(0, 10);
-      elements.reviewEpoch.textContent = `${epochDate} · ${payload.epoch}`;
-      elements.reviewStatement.textContent = payload.statement;
-      elements.reviewDigest.textContent = payload.digest;
-      elements.reviewStatus.textContent = "Link integrity verified";
-      elements.verificationLine.className = "verification-line";
-      elements.verificationLine.textContent = readyForChain()
-        ? "Checking the proposal against Sepolia…"
-        : "Connect the beneficiary wallet to verify this proposal on Sepolia.";
-      if (readyForChain()) await verifyReviewOnChain();
+      const [encounter, effectiveStatus, epoch] = await Promise.all([
+        readEncounter(header.id),
+        readUint("encounterStatus", [Core.encodeBytes32(header.id)]),
+        readUint("currentEpoch")
+      ]);
+      const matches = encounter.contributor === header.contributor
+        && encounter.receiver === header.receiver
+        && encounter.statementDigest === header.digest
+        && encounter.epoch.toString() === String(header.epoch);
+      if (!matches) throw new Error("This private invite does not match its Sepolia proposal.");
+
+      const status = Number(effectiveStatus);
+      state.reviewPrivate = { statement, salt };
+      state.reviewEncounter = { ...encounter, status };
+      elements.reviewStatement.textContent = statement;
+      elements.reviewStatus.textContent = statusName(status);
+      saveLocalRecord({
+        id: header.id,
+        statement,
+        salt,
+        contributor: header.contributor,
+        receiver: header.receiver,
+        digest: header.digest,
+        epoch: header.epoch,
+        status: statusName(status),
+        invite: state.reviewToken,
+        proposedAt: encounter.proposedAt.toString(),
+        confirmedAt: encounter.confirmedAt.toString()
+      });
+
+      if (status === 1 && epoch.toString() === String(header.epoch)) {
+        state.reviewVerified = true;
+        setStatusText(elements.verificationLine, "Verified: wallet, private description and on-chain commitment all match.", "verified");
+      } else if (status === 5 || epoch > BigInt(header.epoch)) {
+        elements.reviewStatus.textContent = "Expired";
+        setStatusText(elements.verificationLine, "This invite expired at Protocol Sunrise and cannot roll over.", "warning");
+      } else if (status === 2) {
+        setStatusText(elements.verificationLine, "This encounter is already confirmed on Sepolia.", "verified");
+      } else {
+        setStatusText(elements.verificationLine, `This encounter is ${statusName(status).toLowerCase()} and cannot be confirmed.`, "warning");
+      }
     } catch (error) {
-      elements.confirmationEmpty.hidden = true;
-      elements.confirmationCard.hidden = false;
-      elements.reviewStatus.textContent = "Invalid link";
-      elements.reviewStatement.textContent = "This confirmation link could not be verified.";
-      elements.verificationLine.className = "verification-line bad";
-      elements.verificationLine.textContent = friendlyError(error);
+      elements.reviewStatus.textContent = "Verification failed";
+      setStatusText(elements.verificationLine, friendlyError(error), "warning");
     }
     updateControls();
   }
 
-  async function verifyReviewOnChain() {
-    state.reviewVerified = false;
-    const payload = state.reviewPayload;
-    if (!payload || !readyForChain()) {
-      updateControls();
-      return;
-    }
-    try {
-      const encounterData = await readCall(Core.encodeCall(SELECTORS.encounters, [Core.encodeBytes32(payload.id)]));
-      const encounter = Core.decodeEncounter(encounterData);
-      state.reviewEncounter = encounter;
-      elements.reviewStatus.textContent = statusLabel(encounter.status);
-
-      if (encounter.provider !== payload.provider || encounter.beneficiary !== payload.beneficiary) {
-        throw new Error("The wallet participants do not match the on-chain proposal.");
-      }
-      if (encounter.statementDigest.toLowerCase() !== payload.digest.toLowerCase()) {
-        throw new Error("The statement digest does not match the on-chain proposal.");
-      }
-      saveLocalRecord(payload);
-
-      if (encounter.status === 2) {
-        elements.verificationLine.className = "verification-line good";
-        elements.verificationLine.textContent = "This encounter has already been confirmed on Sepolia.";
-        return;
-      }
-      if (encounter.status !== 1) throw new Error("No active proposal exists for this encounter ID.");
-      if (state.currentEpoch !== null && encounter.epoch !== state.currentEpoch) {
-        throw new Error("This proposal expired at UTC midnight. Create a new encounter.");
-      }
-      if (state.account !== payload.beneficiary) {
-        throw new Error(`Switch MetaMask to the beneficiary wallet ${Core.shortAddress(payload.beneficiary)}.`);
-      }
-
-      const canReceiveData = await readCall(Core.encodeCall(SELECTORS.canReceive, [Core.encodeAddress(state.account)]));
-      if (decodeSingleUint(canReceiveData) === 0n) {
-        throw new Error("This wallet is already at −1 today and must provide before receiving again.");
-      }
-
-      state.reviewVerified = true;
-      elements.verificationLine.className = "verification-line good";
-      elements.verificationLine.textContent = "Exact statement and both wallet addresses match the live Sepolia proposal.";
-    } catch (error) {
-      elements.verificationLine.className = "verification-line bad";
-      elements.verificationLine.textContent = friendlyError(error);
-    } finally {
-      updateControls();
-    }
-  }
-
-  async function confirmEncounter() {
-    if (!state.reviewVerified || !state.reviewPayload) return;
+  async function respondToInvite(confirming) {
+    if (!state.reviewHeader || !state.reviewVerified) return;
     try {
       setBusy(true);
-      elements.confirmButton.textContent = "Approve in MetaMask…";
-      const data = Core.encodeCall(SELECTORS.confirmEncounter, [Core.encodeBytes32(state.reviewPayload.id)]);
-      const { transactionHash } = await sendTransaction(data);
-      saveLocalRecord(state.reviewPayload, transactionHash);
-      elements.confirmationTransactionLink.href = `${config.explorerBaseUrl}/tx/${transactionHash}`;
-      elements.confirmationTransactionLink.hidden = false;
-      elements.reviewStatus.textContent = "Confirmed";
-      elements.verificationLine.className = "verification-line good";
-      elements.verificationLine.textContent = "Both wallets have now confirmed this encounter on Sepolia.";
+      const selector = confirming ? "confirmEncounter" : "declineEncounter";
+      const { transactionHash } = await sendTransaction(callData(selector, [Core.encodeBytes32(state.reviewHeader.id)]));
+      const nextStatus = confirming ? "Confirmed" : "Declined";
+      saveLocalRecord({
+        id: state.reviewHeader.id,
+        status: nextStatus,
+        ...(confirming ? { confirmationTransactionHash: transactionHash } : { declineTransactionHash: transactionHash })
+      });
       state.reviewVerified = false;
-      showToast("Encounter confirmed. Daily positions and lifetime history are updated.");
+      if (state.reviewEncounter) state.reviewEncounter.status = confirming ? 2 : 3;
+      elements.reviewStatus.textContent = nextStatus;
+      setStatusText(elements.verificationLine, confirming
+        ? "Confirmed on Sepolia. The contributor earned today’s +1. Your receiver score remains neutral."
+        : "Declined on Sepolia. No contribution credit was created.", confirming ? "verified" : "warning");
+      if (confirming) {
+        elements.confirmationTransactionLink.href = txUrl(transactionHash);
+        elements.confirmationTransactionLink.hidden = false;
+      }
+      window.history.replaceState(null, "", "#encounter");
+      showToast(confirming ? "Encounter confirmed. Contributor +1; receiver remains neutral." : "Invite declined on Sepolia.", !confirming);
       await refreshAll();
     } catch (error) {
-      showToast(friendlyError(error), true);
+      reportError(error);
     } finally {
-      elements.confirmButton.textContent = "Confirm as beneficiary";
       setBusy(false);
     }
   }
 
-  async function refreshAccountStats() {
-    const addressWord = Core.encodeAddress(state.account);
-    const [positionData, providedData, receivedData, epochData, resetData] = await Promise.all([
-      readCall(Core.encodeCall(SELECTORS.balanceOf, [addressWord])),
-      readCall(Core.encodeCall(SELECTORS.lifetimeProvided, [addressWord])),
-      readCall(Core.encodeCall(SELECTORS.lifetimeReceived, [addressWord])),
-      readCall(Core.encodeCall(SELECTORS.currentEpoch, [])),
-      readCall(Core.encodeCall(SELECTORS.nextResetAt, []))
-    ]);
-    renderPosition(Number(decodeSingleInt(positionData)));
-    elements.lifetimeValue.textContent = `${decodeSingleUint(providedData)} / ${decodeSingleUint(receivedData)}`;
-    state.currentEpoch = decodeSingleUint(epochData);
-    state.nextResetAt = Number(decodeSingleUint(resetData));
-    const resetDate = new Date(state.nextResetAt * 1000);
-    elements.resetDetail.textContent = `${resetDate.toISOString().slice(0, 10)} · 00:00 UTC`;
+  function renderQrCode() {
+    if (!state.lastInvite || !state.lastInvite.link) throw new Error("Create an invite before showing its QR.");
+    if (typeof window.qrcode !== "function") throw new Error("The QR generator did not load.");
+    const qr = window.qrcode(0, "L");
+    qr.addData(state.lastInvite.link);
+    qr.make();
+    elements.qrCode.innerHTML = qr.createSvgTag(5, 0);
+    elements.qrDialog.showModal();
   }
 
-  async function historyFromBlock() {
-    const configured = BigInt(config.deploymentBlock || "0");
-    if (configured > 0n) return Core.hexQuantity(configured);
-    const latestHex = await ethereum.request({ method: "eth_blockNumber" });
-    const latest = BigInt(latestHex);
-    return Core.hexQuantity(latest > 50000n ? latest - 50000n : 0n);
-  }
-
-  function makeLedgerEntry(log, localRecords) {
-    if (!log.topics || log.topics.length < 4) return null;
-    const id = log.topics[1].toLowerCase();
-    const provider = Core.topicToAddress(log.topics[2]);
-    const beneficiary = Core.topicToAddress(log.topics[3]);
-    if (provider !== state.account && beneficiary !== state.account) return null;
-    const decoded = Core.decodeConfirmedEvent(log.data);
-    const provided = provider === state.account;
-    const counterpart = provided ? beneficiary : provider;
-    const local = localRecords[id];
-
-    const entry = document.createElement("article");
-    entry.className = "ledger-entry";
-
-    const role = document.createElement("span");
-    role.className = `ledger-role${provided ? "" : " received"}`;
-    role.textContent = provided ? "Provided +1" : "Received −1";
-
-    const copy = document.createElement("div");
-    copy.className = "ledger-copy";
-    const statement = document.createElement("p");
-    statement.textContent = local?.statement || "Private statement not stored in this browser.";
-    const details = document.createElement("small");
-    const epochDate = new Date(Number(decoded.epoch) * 86400000).toISOString().slice(0, 10);
-    details.textContent = `With ${Core.shortAddress(counterpart)} · ${epochDate} UTC`;
-    copy.append(statement, details);
-
-    const time = document.createElement("div");
-    time.className = "ledger-time";
-    const date = new Date(Number(decoded.confirmedAt) * 1000);
-    const timeLink = document.createElement("a");
-    timeLink.href = `${config.explorerBaseUrl}/tx/${log.transactionHash}`;
-    timeLink.target = "_blank";
-    timeLink.rel = "noopener";
-    timeLink.textContent = `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-    time.appendChild(timeLink);
-
-    entry.append(role, copy, time);
-    return { entry, confirmedAt: decoded.confirmedAt };
-  }
-
-  async function refreshHistory() {
-    elements.ledger.innerHTML = "";
-    const loading = document.createElement("p");
-    loading.className = "ledger-empty";
-    loading.textContent = "Reading confirmed encounters from Sepolia…";
-    elements.ledger.appendChild(loading);
-    try {
-      const logs = await ethereum.request({
-        method: "eth_getLogs",
-        params: [{
-          address: contractAddress(),
-          fromBlock: await historyFromBlock(),
-          toBlock: "latest",
-          topics: [CONFIRMED_EVENT_TOPIC]
-        }]
-      });
-      const localRecords = readLocalRecords();
-      const entries = logs
-        .map(log => makeLedgerEntry(log, localRecords))
-        .filter(Boolean)
-        .sort((left, right) => Number(right.confirmedAt - left.confirmedAt));
-      elements.ledger.innerHTML = "";
-      if (!entries.length) {
-        const empty = document.createElement("p");
-        empty.className = "ledger-empty";
-        empty.textContent = "No confirmed encounters for this wallet yet.";
-        elements.ledger.appendChild(empty);
-        return;
-      }
-      entries.slice(0, 50).forEach(item => elements.ledger.appendChild(item.entry));
-    } catch (error) {
-      elements.ledger.innerHTML = "";
-      const failure = document.createElement("p");
-      failure.className = "ledger-empty";
-      failure.textContent = `History could not be loaded: ${friendlyError(error)}`;
-      elements.ledger.appendChild(failure);
+  async function startScanner() {
+    if (!("BarcodeDetector" in window)) {
+      showToast("QR scanning is unavailable in this Chrome build. Paste the invite link instead.", true);
+      return;
     }
-  }
-
-  async function refreshAll() {
-    if (!readyForChain()) {
-      renderConnection();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast("Camera access requires HTTPS or localhost. Paste the invite link instead.", true);
       return;
     }
     try {
-      await refreshAccountStats();
-      await Promise.all([verifyReviewOnChain(), refreshHistory()]);
+      stopScanner(false);
+      elements.scannerStatus.textContent = "Point the camera at the complete GameOver invite QR.";
+      elements.scannerDialog.showModal();
+      state.scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      elements.scannerVideo.srcObject = state.scannerStream;
+      await elements.scannerVideo.play();
+      const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      state.scannerTimer = window.setInterval(async () => {
+        if (state.scannerDetecting || !state.scannerStream) return;
+        state.scannerDetecting = true;
+        try {
+          const codes = await detector.detect(elements.scannerVideo);
+          if (codes.length && codes[0].rawValue) {
+            const value = codes[0].rawValue;
+            stopScanner();
+            await loadInvite(value, true);
+            showToast("Private invite QR scanned.");
+          }
+        } catch (error) {
+          elements.scannerStatus.textContent = friendlyError(error);
+        } finally {
+          state.scannerDetecting = false;
+        }
+      }, 350);
     } catch (error) {
-      showToast(friendlyError(error), true);
+      stopScanner();
+      reportError(error);
     }
   }
 
-  function updateCountdown() {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const fallbackReset = (Math.floor(nowSeconds / 86400) + 1) * 86400;
-    const resetAt = state.nextResetAt || fallbackReset;
-    const remaining = Math.max(0, resetAt - nowSeconds);
-    const hours = Math.floor(remaining / 3600);
-    const minutes = Math.floor((remaining % 3600) / 60);
-    const seconds = remaining % 60;
-    elements.countdownValue.textContent = [hours, minutes, seconds].map(value => String(value).padStart(2, "0")).join(":");
+  function stopScanner(closeDialog = true) {
+    if (state.scannerTimer) window.clearInterval(state.scannerTimer);
+    state.scannerTimer = null;
+    if (state.scannerStream) state.scannerStream.getTracks().forEach(track => track.stop());
+    state.scannerStream = null;
+    elements.scannerVideo.srcObject = null;
+    if (closeDialog && elements.scannerDialog.open) elements.scannerDialog.close();
+  }
 
-    if (state.nextResetAt && remaining === 0 && readyForChain() && Date.now() - state.lastRolloverAttempt > 5000) {
-      state.lastRolloverAttempt = Date.now();
-      refreshAll();
+  async function depositGenesis(event) {
+    event.preventDefault();
+    try {
+      const value = Core.weiFromEth(elements.genesisAmount.value);
+      setBusy(true);
+      await sendTransaction(callData("contributeToGenesis"), value);
+      elements.genesisForm.reset();
+      showToast("Sepolia test ETH added permanently to Genesis principal.");
+      await refreshCommons();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function initializeConnection() {
+  async function seedPool(event) {
+    event.preventDefault();
+    try {
+      const value = Core.weiFromEth(elements.poolAmount.value);
+      setBusy(true);
+      await sendTransaction(callData("seedPayoutPool"), value);
+      elements.poolForm.reset();
+      showToast("Sepolia test ETH added to the spendable payout pool.");
+      await refreshCommons();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setBudget(event) {
+    event.preventDefault();
+    try {
+      const epoch = BigInt(elements.budgetEpoch.value);
+      const amount = Core.parseDecimal(elements.budgetAmount.value, 18, "test ETH budget");
+      setBusy(true);
+      await sendTransaction(callData("setEpochBudget", [Core.encodeUint(epoch), Core.encodeUint(amount)]));
+      showToast(`Budget set for epoch ${epoch}. This is an explicit test input.`);
+      await refreshCommons();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setClose(event) {
+    event.preventDefault();
+    try {
+      const epoch = BigInt(elements.closeEpoch.value);
+      const price = Core.priceToScaled(elements.closePrice.value);
+      setBusy(true);
+      await sendTransaction(callData("setMockEpochClosePrice", [Core.encodeUint(epoch), Core.encodeUint(price)]));
+      showToast(`Simulated ETH/USD close stored for epoch ${epoch}.`);
+      await refreshCommons();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finalizeEpoch() {
+    try {
+      const epoch = BigInt(elements.closeEpoch.value);
+      setBusy(true);
+      await sendTransaction(callData("finalizeEpoch", [Core.encodeUint(epoch)]));
+      showToast(`Epoch ${epoch} finalized. Claims, if released, are now pull-based.`);
+      await refreshProtocol();
+      await refreshCommons();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function claimEpoch(epoch) {
+    try {
+      setBusy(true);
+      await sendTransaction(callData("claim", [Core.encodeUint(epoch)]));
+      showToast(`Full allocation for epoch ${epoch} claimed.`);
+      await refreshCommons();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refreshHistory() {
+    if (!readyForRead() || !state.account) {
+      elements.ledger.innerHTML = '<p class="ledger-empty">Connect a wallet to read its Sepolia history.</p>';
+      return;
+    }
+    const baseFilter = {
+      address: contractAddress(),
+      fromBlock: Core.hexQuantity(BigInt(config.deploymentBlock || "0")),
+      toBlock: "latest"
+    };
+    const accountTopic = addressTopic(state.account);
+    const [asContributor, asReceiver] = await Promise.all([
+      ethereum.request({ method: "eth_getLogs", params: [{ ...baseFilter, topics: [CONFIRMED_EVENT_TOPIC, null, accountTopic] }] }),
+      ethereum.request({ method: "eth_getLogs", params: [{ ...baseFilter, topics: [CONFIRMED_EVENT_TOPIC, null, null, accountTopic] }] })
+    ]);
+    const seen = new Set();
+    const logs = [...asContributor, ...asReceiver]
+      .filter(log => {
+        const key = `${log.transactionHash}:${log.logIndex}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(log => {
+        const decoded = Core.decodeConfirmedEvent(log.data);
+        return {
+          id: String(log.topics[1]).toLowerCase(),
+          contributor: Core.topicToAddress(log.topics[2]),
+          receiver: Core.topicToAddress(log.topics[3]),
+          epoch: decoded.epoch,
+          confirmedAt: decoded.confirmedAt,
+          transactionHash: log.transactionHash
+        };
+      })
+      .sort((a, b) => Number(b.confirmedAt - a.confirmedAt));
+    renderHistory(logs);
+  }
+
+  function renderHistory(logs) {
+    elements.ledger.replaceChildren();
+    if (!logs.length) {
+      const empty = document.createElement("p");
+      empty.className = "ledger-empty";
+      empty.textContent = "No confirmed encounters involving this wallet yet.";
+      elements.ledger.appendChild(empty);
+      return;
+    }
+    const records = readLocalRecords();
+    logs.forEach(log => {
+      const record = records[log.id];
+      const contributed = log.contributor === state.account;
+      const row = document.createElement("article");
+      row.className = "ledger-row";
+
+      const role = document.createElement("span");
+      role.className = `ledger-role ${contributed ? "contributor" : "receiver"}`;
+      role.textContent = contributed ? "+1" : "R";
+      role.title = contributed ? "Contributor +1" : "Receiver (neutral)";
+
+      const copy = document.createElement("div");
+      const title = document.createElement("h3");
+      title.textContent = record?.statement || (contributed
+        ? `Contribution confirmed by ${Core.shortAddress(log.receiver)}`
+        : `Contribution from ${Core.shortAddress(log.contributor)}`);
+      const detail = document.createElement("p");
+      const counterpart = contributed ? log.receiver : log.contributor;
+      detail.textContent = `${contributed ? "To" : "From"} ${Core.shortAddress(counterpart)} · ${contributed ? "credited +1" : "receiver stayed neutral"}`;
+      copy.append(title, detail);
+
+      const meta = document.createElement("div");
+      meta.className = "ledger-meta";
+      const date = document.createElement("strong");
+      date.textContent = new Date(Number(log.confirmedAt) * 1000).toLocaleString("en-GB", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC";
+      const link = document.createElement("a");
+      link.className = "text-link";
+      link.href = txUrl(log.transactionHash);
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Etherscan";
+      meta.append(date, link);
+      row.append(role, copy, meta);
+      elements.ledger.appendChild(row);
+    });
+  }
+
+  async function initializeWallet() {
     if (!ethereum) {
       renderConnection();
       return;
     }
     try {
-      const [accounts, chainId] = await Promise.all([
-        ethereum.request({ method: "eth_accounts" }),
-        ethereum.request({ method: "eth_chainId" })
+      const [chainId, accounts] = await Promise.all([
+        ethereum.request({ method: "eth_chainId" }),
+        ethereum.request({ method: "eth_accounts" })
       ]);
-      state.account = accounts[0] ? Core.normalizeAddress(accounts[0]) : null;
       state.chainId = chainId;
-      renderConnection();
-      if (readyForChain()) await refreshAll();
+      state.account = accounts[0] ? Core.normalizeAddress(accounts[0]) : null;
     } catch (error) {
-      showToast(friendlyError(error), true);
+      reportError(error);
     }
+    renderConnection();
+  }
+
+  function handleHash() {
+    const hash = window.location.hash.replace(/^#/, "");
+    const invite = new URLSearchParams(hash).get("invite");
+    if (invite) {
+      if (invite !== state.reviewToken) loadInvite(invite, false);
+      else setRoute("encounter", false);
+      return;
+    }
+    setRoute(hash || "encounter", false);
   }
 
   function bindEvents() {
+    document.querySelectorAll("[data-route]").forEach(control => {
+      control.addEventListener("click", event => {
+        event.preventDefault();
+        setRoute(control.dataset.route, true);
+      });
+    });
+    document.querySelectorAll("[data-close-dialog]").forEach(button => {
+      button.addEventListener("click", () => {
+        const dialog = $(button.dataset.closeDialog);
+        if (dialog === elements.scannerDialog) stopScanner();
+        else if (dialog?.open) dialog.close();
+      });
+    });
     elements.connectButton.addEventListener("click", connectWallet);
-    elements.form.addEventListener("submit", proposeEncounter);
+    elements.encounterForm.addEventListener("submit", proposeEncounter);
     elements.statement.addEventListener("input", () => {
       elements.statementCount.textContent = `${elements.statement.value.length} / 280`;
     });
-    elements.copyLinkButton.addEventListener("click", copyShareLink);
-    elements.confirmButton.addEventListener("click", confirmEncounter);
-    elements.refreshButton.addEventListener("click", refreshAll);
-    window.addEventListener("hashchange", loadReviewPayload);
+    elements.pasteAddressButton.addEventListener("click", async () => {
+      try {
+        elements.receiverAddress.value = (await navigator.clipboard.readText()).trim();
+      } catch (_error) {
+        showToast("Clipboard reading was blocked. Paste the address into the field manually.", true);
+      }
+    });
+    elements.copyLinkButton.addEventListener("click", () => copyText(state.lastInvite?.link, "Private invite link copied.").catch(reportError));
+    elements.modalCopyLinkButton.addEventListener("click", () => copyText(state.lastInvite?.link, "Private invite link copied.").catch(reportError));
+    elements.copyAddressButton.addEventListener("click", () => copyText(state.lastInvite?.receiver, "Receiver address copied.").catch(reportError));
+    elements.showQrButton.addEventListener("click", () => {
+      try { renderQrCode(); } catch (error) { reportError(error); }
+    });
+    elements.cancelButton.addEventListener("click", cancelInvite);
+    elements.openInviteForm.addEventListener("submit", event => {
+      event.preventDefault();
+      loadInvite(elements.inviteLinkInput.value, true);
+    });
+    elements.confirmButton.addEventListener("click", () => respondToInvite(true));
+    elements.declineButton.addEventListener("click", () => respondToInvite(false));
+    elements.scanQrButton.addEventListener("click", startScanner);
+    elements.stopScannerButton.addEventListener("click", () => stopScanner());
+    elements.scannerDialog.addEventListener("close", () => stopScanner(false));
+    elements.genesisForm.addEventListener("submit", depositGenesis);
+    elements.poolForm.addEventListener("submit", seedPool);
+    elements.budgetForm.addEventListener("submit", setBudget);
+    elements.closeForm.addEventListener("submit", setClose);
+    elements.finalizeButton.addEventListener("click", finalizeEpoch);
+    elements.refreshClaimsButton.addEventListener("click", () => refreshClaims().catch(reportError));
+    elements.refreshHistoryButton.addEventListener("click", () => refreshHistory().catch(reportError));
+    elements.claimList.addEventListener("click", event => {
+      const button = event.target.closest("[data-claim-epoch]");
+      if (button) claimEpoch(BigInt(button.dataset.claimEpoch));
+    });
+    window.addEventListener("hashchange", handleHash);
 
-    if (ethereum && typeof ethereum.on === "function") {
+    if (ethereum?.on) {
       ethereum.on("accountsChanged", async accounts => {
         state.account = accounts[0] ? Core.normalizeAddress(accounts[0]) : null;
-        renderPosition(0);
-        elements.lifetimeValue.textContent = "0 / 0";
+        state.lastInvite = null;
         renderConnection();
-        await loadReviewPayload();
-        if (readyForChain()) await refreshAll();
+        await refreshAll().catch(reportError);
+        if (state.reviewHeader) await verifyReview();
       });
       ethereum.on("chainChanged", async chainId => {
         state.chainId = chainId;
-        state.nextResetAt = null;
+        state.contractVerified = false;
         renderConnection();
-        await loadReviewPayload();
-        if (readyForChain()) await refreshAll();
+        await refreshAll().catch(reportError);
+        if (state.reviewHeader) await verifyReview();
       });
     }
   }
 
-  async function boot() {
+  async function initialize() {
+    if (!Core || !config) throw new Error("GameOver configuration failed to load.");
     bindEvents();
-    elements.statementCount.textContent = `${elements.statement.value.length} / 280`;
-    renderConnection();
-    updateCountdown();
-    setInterval(updateCountdown, 1000);
-    await loadReviewPayload();
-    await initializeConnection();
-    if (readyForChain() && state.reviewPayload) await verifyReviewOnChain();
+    handleHash();
+    await initializeWallet();
+    await refreshAll();
+    if (state.reviewHeader) await verifyReview();
+    window.setInterval(tickCountdown, 1000);
+    updateControls();
   }
 
-  boot();
+  initialize().catch(reportError);
 })();
