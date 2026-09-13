@@ -4,7 +4,7 @@ GameOver v4 is a Sepolia-only Proof-of-Encounter experiment. A contributor propo
 
 Both the browser and contract enforce Sepolia chain ID `11155111`; an attempted v4 deployment on another chain reverts.
 
-> **Status:** the v4 code is complete and tested locally, but `config.js` intentionally contains a zero contract address. A new v4 contract must be deployed on Sepolia before the on-chain controls become live. The old v3 address is incompatible with v4.
+> > **Status:** v4 is deployed on Sepolia at [`0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14`](https://sepolia.etherscan.io/address/0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14) through [transaction `0x18085036…b4844`](https://sepolia.etherscan.io/tx/0x18085036a7eb150ff1cbc5d9665d7635a714bacb2ff9fbe1a45515f7534b4844), mined in block `11691819`. Source verification and the final two-wallet rehearsal remain pending. The old v3 address is incompatible with v4.
 
 Headline: **One Encounter. Confirmed by Both.**
 
@@ -131,7 +131,7 @@ npm run compile
 
 ## Deploy v4 to Sepolia
 
-The deployment is intentionally left for the project owner’s MetaMask confirmation.
+The canonical v4 deployment was confirmed by the project owner in MetaMask and mined in Sepolia block `11691819`. The steps below document the deployed settings and can be reused for a replacement Sepolia deployment.
 
 1. Type and verify the current stable Remix URL, `https://app.remix.live/`, then create `GameOverEncounter.sol` using the file in this package. Do not use a lookalike domain.
 2. In **Solidity Compiler**, choose compiler `0.8.24`, enable optimization and set runs to `200`.

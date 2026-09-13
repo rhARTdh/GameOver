@@ -15,6 +15,6 @@ The product decisions recorded in `V4_SPEC.md` are the controlling human-approve
 
 The vendored QR implementation in `vendor/qrcode.js` is third-party MIT-licensed software, not AI-generated code; its source and notice are recorded in `THIRD_PARTY_NOTICES.md`.
 
-No AI service is called by the v4 application at runtime. The Build Status view explicitly labels AI description structuring as simulated by user-entered text. The v4 package also leaves deployment to the project owner: it contains no private keys, wallet credentials or preconfigured v4 contract address.
+No AI service is called by the v4 application at runtime. The Build Status view explicitly labels AI description structuring as simulated by user-entered text. The project owner personally confirmed the Sepolia deployment in MetaMask. The repository contains only its public contract address; it contains no private keys or wallet credentials.
 
 Before any public demo or deployment, the project owner remains responsible for reviewing the generated code, confirming MetaMask transactions, verifying the deployed source and accurately describing the prototype’s limitations.

@@ -81,6 +81,7 @@ This file records the decisions accepted before implementation. It is the produc
 | Status | Features |
 | --- | --- |
 | Implemented in the v4 code | Wallet connect/network guard, proposals, pre-addressed invites, encrypted links, QR create/scan, confirm/decline/cancel/expire, daily credit, pair cap, receipts/history, Genesis and pool deposits, budgets, settlement, allocations and claims |
-| Requires one owner action | Deploy the new contract on Sepolia and enter its address/block in `config.js` |
+| Live on Sepolia | Contract `0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14` was deployed in block `11691819` and configured in `config.js` |
+| Remaining verification | Publish verified source on Sepolia Etherscan and complete the final two-wallet rehearsal |
 | Simulated | ETH/USD close/appreciation, epoch budget input, future income, AI structuring |
 | Deferred/omitted | Mainnet, location, agents, personhood, permanent statement storage, governance, PWA, payout estimates, disputes and bilateral credit |
