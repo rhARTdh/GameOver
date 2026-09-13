@@ -4,7 +4,7 @@ GameOver v4 is a Sepolia-only Proof-of-Encounter experiment. A contributor propo
 
 Both the browser and contract enforce Sepolia chain ID `11155111`; an attempted v4 deployment on another chain reverts.
 
-> > **Status:** v4 is deployed on Sepolia at [`0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14`](https://sepolia.etherscan.io/address/0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14) through [transaction `0x18085036…b4844`](https://sepolia.etherscan.io/tx/0x18085036a7eb150ff1cbc5d9665d7635a714bacb2ff9fbe1a45515f7534b4844), mined in block `11691819`. Source verification and the final two-wallet rehearsal remain pending. The old v3 address is incompatible with v4.
+> > **Status:** v4 is deployed on Sepolia at [`0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14`](https://sepolia.etherscan.io/address/0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14) through [transaction `0x18085036…b4844`](https://sepolia.etherscan.io/tx/0x18085036a7eb150ff1cbc5d9665d7635a714bacb2ff9fbe1a45515f7534b4844), mined in block `11691819`. The source code and ABI are verified on Etherscan; the final two-wallet rehearsal remains pending. The old v3 address is incompatible with v4.
 
 Headline: **One Encounter. Confirmed by Both.**
 

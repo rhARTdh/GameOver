@@ -82,6 +82,7 @@ This file records the decisions accepted before implementation. It is the produc
 | --- | --- |
 | Implemented in the v4 code | Wallet connect/network guard, proposals, pre-addressed invites, encrypted links, QR create/scan, confirm/decline/cancel/expire, daily credit, pair cap, receipts/history, Genesis and pool deposits, budgets, settlement, allocations and claims |
 | Live on Sepolia | Contract `0xE3dD8AC72e37Cfc562c35A70B0c4946084EF9A14` was deployed in block `11691819` and configured in `config.js` |
-| Remaining verification | Publish verified source on Sepolia Etherscan and complete the final two-wallet rehearsal |
+| Verified source | Etherscan matched the Solidity source and ABI using compiler `0.8.24`, optimizer `200` runs and EVM target `shanghai` |
+| Remaining verification | Complete the final two-wallet rehearsal |
 | Simulated | ETH/USD close/appreciation, epoch budget input, future income, AI structuring |
 | Deferred/omitted | Mainnet, location, agents, personhood, permanent statement storage, governance, PWA, payout estimates, disputes and bilateral credit |
